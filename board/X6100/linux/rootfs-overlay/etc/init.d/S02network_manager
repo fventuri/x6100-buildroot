@@ -1,0 +1,48 @@
+#!/bin/sh
+#
+# Network Manager config
+#
+
+set -e
+
+nm_backup="/mnt/network_manager_backup.zip"
+nm_system_connections="/etc/NetworkManager/system-connections"
+
+start() {
+    # only restore from backup if the system-connections directory is empty
+    if [ -z "$(ls $nm_system_connections)" ]; then
+        if [ -f $nm_backup ]; then
+            printf "Restore Network Manager: "
+            unzip -q $nm_backup -d $nm_system_connections
+            echo "OK"
+        fi
+    fi
+}
+
+stop() {
+    printf "Backup Network Manager: "
+    # we have to use a Python script here since zip is not installed
+    python <<-EOF
+	import os
+	from zipfile import ZipFile
+
+	with ZipFile('$nm_backup', 'w', strict_timestamps=False) as zip:
+	    for file in os.listdir('$nm_system_connections'):
+	        zip.write(os.path.join('$nm_system_connections', file), file)
+EOF
+    echo "OK"
+}
+
+case "$1" in
+  start)
+    start
+    ;;
+  stop)
+    stop
+    ;;
+  *)
+    echo "Usage: $0 {start|stop}"
+    exit 1
+esac
+
+exit $?
