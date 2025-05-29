@@ -4,7 +4,7 @@
 #
 ################################################################################
 
-X6100_WEBSERVER_VERSION = v0.0.3
+X6100_WEBSERVER_VERSION = v0.0.4
 X6100_WEBSERVER_SITE = https://github.com/gdyuldin/x6100_webserver
 X6100_WEBSERVER_SITE_METHOD = git
 X6100_WEBSERVER_LICENSE = GPLv2

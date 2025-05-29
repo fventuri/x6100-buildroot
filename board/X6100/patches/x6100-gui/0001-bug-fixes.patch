@@ -1,6 +1,6 @@
 diff -Naur x6100-gui.orig/src/scheduler.cpp x6100-gui/src/scheduler.cpp
---- x6100-gui.orig/src/scheduler.cpp	2025-02-19 00:10:21.000000000 -0500
-+++ x6100-gui/src/scheduler.cpp	2025-02-19 15:13:49.578765371 -0500
+--- x6100-gui.orig/src/scheduler.cpp	2025-05-21 08:17:50.000000000 -0400
++++ x6100-gui/src/scheduler.cpp	2025-05-29 07:45:42.790468852 -0400
 @@ -8,6 +8,7 @@
  
  #include "scheduler.h"

@@ -1,6 +1,6 @@
 diff -Nuar aether-x6100-control.orig/include/aether_radio/x6100_control/low/gpio.h aether-x6100-control/include/aether_radio/x6100_control/low/gpio.h
---- aether-x6100-control.orig/include/aether_radio/x6100_control/low/gpio.h	2025-02-17 11:59:50.000000000 -0500
-+++ aether-x6100-control/include/aether_radio/x6100_control/low/gpio.h	2025-02-18 09:12:12.752044964 -0500
+--- aether-x6100-control.orig/include/aether_radio/x6100_control/low/gpio.h	2025-05-10 07:34:37.000000000 -0400
++++ aether-x6100-control/include/aether_radio/x6100_control/low/gpio.h	2025-05-29 07:10:25.131755587 -0400
 @@ -14,11 +14,5 @@
  #include <stdbool.h>
  #include <stdint.h>
@@ -15,8 +15,8 @@ diff -Nuar aether-x6100-control.orig/include/aether_radio/x6100_control/low/gpio
 -AETHER_X6100CTRL_API void x6100_gpio_set(int pin, int value);
 +AETHER_X6100CTRL_API void x6100_gpio_set(const char *name, int value);
 diff -Nuar aether-x6100-control.orig/src/low/gpio.c aether-x6100-control/src/low/gpio.c
---- aether-x6100-control.orig/src/low/gpio.c	2025-02-17 11:59:50.000000000 -0500
-+++ aether-x6100-control/src/low/gpio.c	2025-02-19 16:59:25.255941735 -0500
+--- aether-x6100-control.orig/src/low/gpio.c	2025-05-10 07:34:37.000000000 -0400
++++ aether-x6100-control/src/low/gpio.c	2025-05-29 07:10:25.132349858 -0400
 @@ -17,45 +17,85 @@
  #include <gpiod.h>
  
