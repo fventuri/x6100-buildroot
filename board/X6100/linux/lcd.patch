@@ -1,6 +1,6 @@
-diff -Nuar linux-6.14.8.orig/drivers/gpu/drm/panel/Kconfig linux-6.14.8/drivers/gpu/drm/panel/Kconfig
---- linux-6.14.8.orig/drivers/gpu/drm/panel/Kconfig	2025-05-22 08:31:58.000000000 -0400
-+++ linux-6.14.8/drivers/gpu/drm/panel/Kconfig	2025-05-29 07:26:15.797659092 -0400
+diff -Nuar linux-6.14.10.orig/drivers/gpu/drm/panel/Kconfig linux-6.14.10/drivers/gpu/drm/panel/Kconfig
+--- linux-6.14.10.orig/drivers/gpu/drm/panel/Kconfig	2025-05-22 08:31:58.000000000 -0400
++++ linux-6.14.10/drivers/gpu/drm/panel/Kconfig	2025-05-29 07:26:15.797659092 -0400
 @@ -1024,4 +1024,8 @@
  	  Say Y here if you want to enable support for the Xinpeng
  	  XPP055C272 controller for 720x1280 LCD panels with MIPI/RGB/SPI
@@ -10,17 +10,17 @@ diff -Nuar linux-6.14.8.orig/drivers/gpu/drm/panel/Kconfig linux-6.14.8/drivers/
 +	tristate "Jinglitai JLT4013A panel driver"
 +
  endmenu
-diff -Nuar linux-6.14.8.orig/drivers/gpu/drm/panel/Makefile linux-6.14.8/drivers/gpu/drm/panel/Makefile
---- linux-6.14.8.orig/drivers/gpu/drm/panel/Makefile	2025-05-22 08:31:58.000000000 -0400
-+++ linux-6.14.8/drivers/gpu/drm/panel/Makefile	2025-05-29 07:26:15.799125742 -0400
+diff -Nuar linux-6.14.10.orig/drivers/gpu/drm/panel/Makefile linux-6.14.10/drivers/gpu/drm/panel/Makefile
+--- linux-6.14.10.orig/drivers/gpu/drm/panel/Makefile	2025-05-22 08:31:58.000000000 -0400
++++ linux-6.14.10/drivers/gpu/drm/panel/Makefile	2025-05-29 07:26:15.799125742 -0400
 @@ -104,3 +104,4 @@
  obj-$(CONFIG_DRM_PANEL_VISIONOX_R66451) += panel-visionox-r66451.o
  obj-$(CONFIG_DRM_PANEL_WIDECHIPS_WS2401) += panel-widechips-ws2401.o
  obj-$(CONFIG_DRM_PANEL_XINPENG_XPP055C272) += panel-xinpeng-xpp055c272.o
 +obj-$(CONFIG_DRM_PANEL_JINGLITAI_JLT4013A) += panel-jinglitai-jlt4013a.o
-diff -Nuar linux-6.14.8.orig/drivers/gpu/drm/panel/panel-jinglitai-jlt4013a.c linux-6.14.8/drivers/gpu/drm/panel/panel-jinglitai-jlt4013a.c
---- linux-6.14.8.orig/drivers/gpu/drm/panel/panel-jinglitai-jlt4013a.c	1969-12-31 19:00:00.000000000 -0500
-+++ linux-6.14.8/drivers/gpu/drm/panel/panel-jinglitai-jlt4013a.c	2025-05-29 07:26:15.801659233 -0400
+diff -Nuar linux-6.14.10.orig/drivers/gpu/drm/panel/panel-jinglitai-jlt4013a.c linux-6.14.10/drivers/gpu/drm/panel/panel-jinglitai-jlt4013a.c
+--- linux-6.14.10.orig/drivers/gpu/drm/panel/panel-jinglitai-jlt4013a.c	1969-12-31 19:00:00.000000000 -0500
++++ linux-6.14.10/drivers/gpu/drm/panel/panel-jinglitai-jlt4013a.c	2025-05-29 07:26:15.801659233 -0400
 @@ -0,0 +1,549 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
