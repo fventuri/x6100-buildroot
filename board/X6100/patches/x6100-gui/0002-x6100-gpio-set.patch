@@ -1,6 +1,6 @@
-diff -Naur x6100-gui.orig/src/backlight.c x6100-gui/src/backlight.c
---- x6100-gui.orig/src/backlight.c	2025-05-21 08:17:50.000000000 -0400
-+++ x6100-gui/src/backlight.c	2025-05-29 07:38:48.062346820 -0400
+diff -Nuar x6100-gui.orig/src/backlight.c x6100-gui/src/backlight.c
+--- x6100-gui.orig/src/backlight.c	2025-06-26 04:59:53.000000000 -0400
++++ x6100-gui/src/backlight.c	2025-06-27 07:14:09.384858443 -0400
 @@ -26,7 +26,7 @@
  
  static void backlight_timer(lv_timer_t *t) {
@@ -45,10 +45,10 @@ diff -Naur x6100-gui.orig/src/backlight.c x6100-gui/src/backlight.c
  
          voice_say_text_fmt("Display on");
          on = true;
-diff -Naur x6100-gui.orig/src/cat.cpp x6100-gui/src/cat.cpp
---- x6100-gui.orig/src/cat.cpp	2025-05-21 08:17:50.000000000 -0400
-+++ x6100-gui/src/cat.cpp	2025-05-29 07:38:48.062917686 -0400
-@@ -988,7 +988,7 @@
+diff -Nuar x6100-gui.orig/src/cat.cpp x6100-gui/src/cat.cpp
+--- x6100-gui.orig/src/cat.cpp	2025-06-26 04:59:53.000000000 -0400
++++ x6100-gui/src/cat.cpp	2025-06-27 07:14:09.385182495 -0400
+@@ -996,7 +996,7 @@
  
  void cat_init() {
      /* UART */
@@ -57,10 +57,10 @@ diff -Naur x6100-gui.orig/src/cat.cpp x6100-gui/src/cat.cpp
  
      int fd = open("/dev/ttyS2", O_RDWR | O_NONBLOCK | O_NOCTTY);
  
-diff -Naur x6100-gui.orig/src/radio.c x6100-gui/src/radio.c
---- x6100-gui.orig/src/radio.c	2025-05-21 08:17:50.000000000 -0400
-+++ x6100-gui/src/radio.c	2025-05-29 07:38:48.063346855 -0400
-@@ -376,9 +376,9 @@
+diff -Nuar x6100-gui.orig/src/radio.c x6100-gui/src/radio.c
+--- x6100-gui.orig/src/radio.c	2025-06-26 04:59:53.000000000 -0400
++++ x6100-gui/src/radio.c	2025-06-27 07:14:09.385535208 -0400
+@@ -393,9 +393,9 @@
  }
  
  void radio_bb_reset() {
@@ -72,7 +72,7 @@ diff -Naur x6100-gui.orig/src/radio.c x6100-gui/src/radio.c
  }
  
  void radio_init() {
-@@ -392,7 +392,7 @@
+@@ -409,7 +409,7 @@
      if (!x6100_flow_init())
          return;
  
@@ -81,16 +81,16 @@ diff -Naur x6100-gui.orig/src/radio.c x6100-gui/src/radio.c
  
      pack = malloc(sizeof(x6100_flow_t));
  
-@@ -748,5 +748,5 @@
+@@ -711,5 +711,5 @@
  }
  
  void radio_set_morse_key(bool on) {
 -    x6100_gpio_set(x6100_pin_morse_key, on ? 0 : 1);
 +    x6100_gpio_set("morse_key", on ? 0 : 1);
  }
-diff -Naur x6100-gui.orig/src/wifi.cpp x6100-gui/src/wifi.cpp
---- x6100-gui.orig/src/wifi.cpp	2025-05-21 08:17:50.000000000 -0400
-+++ x6100-gui/src/wifi.cpp	2025-05-29 07:38:48.063848162 -0400
+diff -Nuar x6100-gui.orig/src/wifi.cpp x6100-gui/src/wifi.cpp
+--- x6100-gui.orig/src/wifi.cpp	2025-06-26 04:59:53.000000000 -0400
++++ x6100-gui/src/wifi.cpp	2025-06-27 07:14:09.385729230 -0400
 @@ -91,7 +91,7 @@
  void wifi_power_on() {
      LV_LOG_USER("Power on wifi/bt");

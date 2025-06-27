@@ -1,6 +1,17 @@
-diff -Naur x6100-gui.orig/src/scheduler.cpp x6100-gui/src/scheduler.cpp
---- x6100-gui.orig/src/scheduler.cpp	2025-05-21 08:17:50.000000000 -0400
-+++ x6100-gui/src/scheduler.cpp	2025-05-29 07:45:42.790468852 -0400
+diff -Nuar x6100-gui.orig/src/knobs.cpp x6100-gui/src/knobs.cpp
+--- x6100-gui.orig/src/knobs.cpp	2025-06-26 04:59:53.000000000 -0400
++++ x6100-gui/src/knobs.cpp	2025-06-27 07:34:28.584405113 -0400
+@@ -15,6 +15,7 @@
+ #include <string>
+ #include <vector>
+ #include <map>
++#include <stdexcept>
+ 
+ extern "C" {
+     #include "styles.h"
+diff -Nuar x6100-gui.orig/src/scheduler.cpp x6100-gui/src/scheduler.cpp
+--- x6100-gui.orig/src/scheduler.cpp	2025-06-26 04:59:53.000000000 -0400
++++ x6100-gui/src/scheduler.cpp	2025-06-27 07:18:22.965107584 -0400
 @@ -8,6 +8,7 @@
  
  #include "scheduler.h"
@@ -9,3 +20,22 @@ diff -Naur x6100-gui.orig/src/scheduler.cpp x6100-gui/src/scheduler.cpp
  #include <queue>
  #include <mutex>
  
+diff -Nuar x6100-gui.orig/src/util.h x6100-gui/src/util.h
+--- x6100-gui.orig/src/util.h	2025-06-26 04:59:53.000000000 -0400
++++ x6100-gui/src/util.h	2025-06-27 07:23:34.080667276 -0400
+@@ -9,6 +9,7 @@
+ #pragma once
+ 
+ #include "helpers.h"
++#include <stdint.h>
+ 
+ #ifdef __cplusplus
+ 
+@@ -20,7 +21,6 @@
+ extern "C" {
+ #endif
+ 
+-#include <stdint.h>
+ #include <stdbool.h>
+ #include <sys/types.h>
+ #include <liquid/liquid.h>

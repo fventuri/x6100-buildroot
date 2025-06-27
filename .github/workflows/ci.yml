@@ -32,35 +32,27 @@ jobs:
         run: |
           cd ..
           curl -s -S "https://buildroot.org/downloads/buildroot-${BUILDROOT_VERSION}.tar.xz" | tar xJf -
-      - name: Build images
+      - name: Build image
         env:
           BR2_EXTERNAL: ${GITHUB_WORKSPACE}
         run: |
-          for x6100_version in georgy wicknix; do
-            echo "$(date) - Building x6100_gui version ${x6100_version}" 1>&2
-            rm ${GITHUB_WORKSPACE}/package/x6100-gui/x6100_gui.mk
-            ln -s x6100_gui.mk.${x6100_version} ${GITHUB_WORKSPACE}/package/x6100-gui/x6100_gui.mk
-            cd ../buildroot-${BUILDROOT_VERSION}
-            make X6100_defconfig
-            make x6100-gui-dirclean
-            make
-            mv output/images/sdcard.img output/images/${SDCARD_NAME}-${x6100_version}.img
-          done
+          cd ../buildroot-${BUILDROOT_VERSION}
+          make X6100_defconfig
+          make
+          mv output/images/sdcard.img output/images/${SDCARD_NAME}.img
       - name: Checksum and zip
         run: |
           cd ../buildroot-${BUILDROOT_VERSION}/output/images
-          for x6100_version in georgy wicknix; do
-            sha256sum ${SDCARD_NAME}-${x6100_version}.img > ${CHECKSUMS_FILENAME}
-            zip ${GITHUB_WORKSPACE}/${SDCARD_NAME}-${x6100_version}.zip ${SDCARD_NAME}-${x6100_version}.img ${CHECKSUMS_FILENAME}
-          done
+          sha256sum ${SDCARD_NAME}.img > ${CHECKSUMS_FILENAME}
+          zip ${GITHUB_WORKSPACE}/${SDCARD_NAME}.zip ${SDCARD_NAME}.img ${CHECKSUMS_FILENAME}
           cd ${GITHUB_WORKSPACE}
-          sha256sum ${SDCARD_NAME}-*.zip > ${CHECKSUMS_FILENAME}
+          sha256sum ${SDCARD_NAME}.zip > ${CHECKSUMS_FILENAME}
       - name: Release
         uses: softprops/action-gh-release@v2
         if: ${{ github.ref_type == 'tag' }}
         with:
           files: |
-            ${{ env.SDCARD_NAME }}-*.zip
+            ${{ env.SDCARD_NAME }}.zip
             ${{ env.CHECKSUMS_FILENAME }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
