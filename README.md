@@ -60,6 +60,8 @@ make
 - [current x6100_gui - Georgy](https://github.com/gdyuldin/x6100_gui)
 - [current X6100Control - Georgy](https://github.com/gdyuldin/X6100Control)
 
+- [x6100_gui - wicknix](https://github.com/wicknix/x6100_gui)
+
 - [previous AetherX6100Buildroot - Oleg](https://github.com/strijar/AetherX6100Buildroot)
 - [previous x6100_gui - Oleg](https://github.com/strijar/x6100_gui)
 
