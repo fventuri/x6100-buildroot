@@ -1,0 +1,7 @@
+Release 20250702
+  - buildroot: 2025.05
+  - linux kernel: 6.14.10
+  - u-boot: 2025.04
+  - aether-x6100-control: 0.15.8
+  - x6100-gui: 0.31.2
+  - x6100-webserver: 0.0.4
