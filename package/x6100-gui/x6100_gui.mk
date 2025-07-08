@@ -1,1 +1,1 @@
-x6100_gui.mk.georgy
+x6100_gui.mk.wicknix
