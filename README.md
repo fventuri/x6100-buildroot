@@ -69,6 +69,8 @@ make
 - [original X6100Control - Oleg](https://github.com/AetherRadio/X6100Control)
 - [original JLT4013A LCD panel driver - Ruy](https://github.com/AetherRadio/panel-jinglitai-jlt4013a)
 
+- [fate JS8 CLI program](https://github.com/rtmrtmrtmrtm/fate)
+
 - [Xiegu X6100 users group](https://groups.io/g/xiegu-x6100)
 
 

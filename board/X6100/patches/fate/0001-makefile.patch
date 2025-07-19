@@ -1,0 +1,15 @@
+diff -Nuar fate-origin_main.orig/Makefile fate-origin_main/Makefile
+--- fate-origin_main.orig/Makefile	2022-02-10 17:01:24.000000000 -0500
++++ fate-origin_main/Makefile	2025-07-18 08:33:11.816437744 -0400
+@@ -1,8 +1,9 @@
+ 
+ CXX = c++ -O
+ 
+-FLAGS = -std=c++17 -I/opt/local/include -I/usr/local/include
+-LIBS = -L/opt/local/lib -L/usr/local/lib -lfftw3 -lsndfile -lportaudio
++#FLAGS = -std=c++17 -Wall -Wno-psabi
++FLAGS = -std=c++17 -Wdouble-promotion -Wfloat-conversion -Wno-psabi
++LIBS = -lfftw3f -lsndfile -lportaudio
+ 
+ MOREC = 
+ MOREH = 

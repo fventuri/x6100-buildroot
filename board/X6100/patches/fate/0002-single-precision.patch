@@ -1,0 +1,5313 @@
+diff -Nuar fate-origin_main.orig/cloudsdr.cc fate-origin_main/cloudsdr.cc
+--- fate-origin_main.orig/cloudsdr.cc	2022-02-10 17:01:24.000000000 -0500
++++ fate-origin_main/cloudsdr.cc	2025-07-19 10:20:12.637478208 -0400
+@@ -36,7 +36,7 @@
+   long long hz = -1;
+   int comma = chan.find(",");
+   if(comma >= 0){
+-    hz = atof(chan.c_str() + comma + 1) * 1000000.0;
++    hz = strtof(chan.c_str() + comma + 1, NULL) * 1000000.0f;
+     hostname = std::string(chan, 0, comma);
+   } else {
+     hostname = chan;
+@@ -332,7 +332,7 @@
+ void
+ CloudSDR::reader()
+ {
+-  double lastclip = 0;
++  float lastclip = 0;
+   
+   while(1){
+     std::vector<int> v = readone();
+@@ -411,7 +411,7 @@
+ // always 8000 samples/second.
+ // sets t to time of last sample.
+ std::vector<short>
+-CloudSDR::get(double &t)
++CloudSDR::get(float &t)
+ {
+   std::vector<short> v;
+   
+@@ -549,11 +549,11 @@
+   CloudSDR sdr;
+   sdr.open("192.168.3.140");
+ 
+-  std::vector<double> all;
++  std::vector<float> all;
+ 
+   while(1){
+     sleep(1);
+-    double ttt;
++    float ttt;
+     std::vector<short> v = sdr.get(ttt);
+     printf("%d\n", (int) v.size());
+     for(int i = 0; i < (int) v.size(); i++)
+diff -Nuar fate-origin_main.orig/cloudsdr.h fate-origin_main/cloudsdr.h
+--- fate-origin_main.orig/cloudsdr.h	2022-02-10 17:01:24.000000000 -0500
++++ fate-origin_main/cloudsdr.h	2025-07-19 09:31:40.951417269 -0400
+@@ -22,7 +22,7 @@
+ 
+   // written by reader, read by get().
+   std::vector<short> samples_;
+-  double samples_time_; // when last sample arrived.
++  float samples_time_; // when last sample arrived.
+   std::mutex samples_mu_;
+ 
+   int read8();
+@@ -51,7 +51,7 @@
+   void get_af_filter(int &low, int &high);
+   void set_af_filter(int low, int high);
+   void get_agc(int &threshold, int &slope, int &decay);
+-  std::vector<short> get(double &);
++  std::vector<short> get(float &);
+   int rate() { return 8000; }
+ };
+ 
+diff -Nuar fate-origin_main.orig/common.cc fate-origin_main/common.cc
+--- fate-origin_main.orig/common.cc	2022-02-10 17:01:24.000000000 -0500
++++ fate-origin_main/common.cc	2025-07-19 10:14:19.095433882 -0400
+@@ -30,7 +30,7 @@
+ std::map<std::string, bool> dups;
+ 
+ void
+-call_entry(std::vector<double> samples, int nominal_start,
++call_entry(std::vector<float> samples, int nominal_start,
+            int rate, cb_t cb)
+ {
+   int hints[2] = { 0 };
+@@ -40,7 +40,7 @@
+   // want 2.5 seconds before nominal start.
+   int wanted = (5 * rate) / 2 - nominal_start;
+   if(wanted > 0){
+-    std::vector<double> pad(wanted, 0.0);
++    std::vector<float> pad(wanted, 0.0f);
+     samples.insert(samples.begin(), pad.begin(), pad.end());
+     nominal_start += pad.size();
+   }
+@@ -52,7 +52,7 @@
+           sprintf(file, "r%03d.wav", seq);
+           seq++;
+           display_status = std::string("writing ") + file;
+-          std::vector<double> xx = samples;
++          std::vector<float> xx = samples;
+           xx.erase(xx.begin(), xx.begin() + nominal_start - (rate / 2));
+           xx.resize(rate * 15);
+           writewav(xx, file, rate);
+@@ -72,7 +72,7 @@
+ 
+   // last two seconds of previous cycle, to prepend to
+   // next cycle, for early signals.
+-  std::vector<double> saved(2 * rate, 0.0);
++  std::vector<float> saved(2 * rate, 0.0f);
+   
+   while(1){
+     // sleep until 14 seconds into the next 15-second cycle.
+@@ -80,19 +80,19 @@
+       // the "1" asks for the most recent 15 seconds of samples,
+       // not the oldest buffered. it causes samples before the
+       // most recent 15 seconds to be discarded.
+-      double ttt_start;
+-      std::vector<double> samples = sin->get(15 * rate, ttt_start, 1);
++      float ttt_start;
++      std::vector<float> samples = sin->get(15 * rate, ttt_start, 1);
+       
+       // sample # of 0.5 seconds into the 15-second cycle.
+       long long nominal_start;
+ 
+       if(sin->is_file()){
+-        nominal_start = rate * 0.5;
++        nominal_start = rate * 0.5f;
+       } else {
+         // ttt_start is UNIX time of samples[0].
+-        double ttt_end = ttt_start + samples.size() / (double) rate;
+-        double cycle_start = ((long long) (ttt_end / 15)) * 15;
+-        nominal_start = samples.size() - rate * (ttt_end - cycle_start - 0.5);
++        float ttt_end = ttt_start + samples.size() / (float) rate;
++        float cycle_start = ((long long) (ttt_end / 15)) * 15;
++        nominal_start = samples.size() - rate * (ttt_end - cycle_start - 0.5f);
+       }
+ 
+       if(nominal_start >= 0 && nominal_start + 10*rate < (int) samples.size()){
+@@ -103,7 +103,7 @@
+ 
+         // make samples always the same size, to make
+         // fftw plan caching more effective.
+-        // samples.resize(16 * rate, 0.0);
++        // samples.resize(16 * rate, 0.0f);
+         
+         samples.insert(samples.begin(), saved.begin(), saved.end());
+         nominal_start += saved.size();
+@@ -122,8 +122,8 @@
+ }
+ 
+ int
+-benchmark_cb(int *a87, double hz0, double hz1, double off,
+-             const char *comment, double snr, int pass,
++benchmark_cb(int *a87, float hz0, float hz1, float off,
++             const char *comment, float snr, int pass,
+              int correct_bits)
+ {
+   std::string other_call_dummy;
+@@ -231,7 +231,7 @@
+   for(int i = 0; files[i]; i++){
+     if(verbose)
+       printf("%s\n", files[i]);
+-    std::vector<double> big = readwav(files[i], rate);
++    std::vector<float> big = readwav(files[i], rate);
+     int nominal_start = rate / 2;
+     dups_mu.lock();
+     dups.erase(dups.begin(), dups.end());
+@@ -247,42 +247,42 @@
+ 
+ struct opt_var {
+   const char *name;
+-  double vals[30];
++  float vals[30];
+ };
+ 
+ struct opt_var vars [] =
+   {
+-    { "subtract_ramp", { 0.001, 0.08, 0.11, 0.13, 0.15, 0.2, -9999 } },
++    { "subtract_ramp", { 0.001f, 0.08f, 0.11f, 0.13f, 0.15f, 0.2f, -9999 } },
+     { "c_soft_win", { 0, 1, 2, 3, 4, 5, 6, -9999 } },
+-    { "c_soft_weight", { 2.0, 3.0, 3.5, 3.8, 4.0, 4.2, 4.5, 5.0, 6, 7, 9, -9999 } },
++    { "c_soft_weight", { 2.0f, 3.0f, 3.5f, 3.8f, 4.0f, 4.2f, 4.5f, 5.0f, 6, 7, 9, -9999 } },
+     { "coarse_hz_n", { 2, 3, 4, 5, 6, 7, 8, 10, -9999 } },
+     { "third_off_n", { 3, 4, 5, 6, 7, 8, 10, 12, -9999 } },
+-    { "third_off_win", { 0.01, 0.015, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.075, 0.08, 0.09, 0.1, 0.15, -9999 } },
++    { "third_off_win", { 0.01f, 0.015f, 0.02f, 0.03f, 0.04f, 0.05f, 0.06f, 0.07f, 0.075f, 0.08f, 0.09f, 0.1f, 0.15f, -9999 } },
+     { "ncoarse", { 1, 2, 3, -9999 } },
+     { "ncoarse_blocks", { 1, 2, 3, 4, -9999 } },
+     { "coarse_off_n", { 2, 3, 4, 5, 6, -9999 } },
+     { "second_hz_n", { 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, -9999 } },
+-    { "second_hz_win", { 5.5, 5, 4.5, 4.0, 3.5, 3.0, 2.5, -9999 } },
+-    { "second_off_win", { 0.4, 0.45, 0.5, 0.55, 0.6, 0.7, 0.8, -9999 } },
++    { "second_hz_win", { 5.5f, 5, 4.5f, 4.0f, 3.5f, 3.0f, 2.5f, -9999 } },
++    { "second_off_win", { 0.4f, 0.45f, 0.5f, 0.55f, 0.6f, 0.7f, 0.8f, -9999 } },
+     { "second_off_n", { 6, 8, 9, 10, 11, 12, 13, -9999 } },
+-    { "third_hz_win", { 0.01, 0.025, 0.05, 0.075, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5, 0.75, 1, 1.5, 2, 3, -9999 } },
++    { "third_hz_win", { 0.01f, 0.025f, 0.05f, 0.075f, 0.1f, 0.15f, 0.2f, 0.25f, 0.3f, 0.4f, 0.5f, 0.75f, 1, 1.5f, 2, 3, -9999 } },
+     { "third_hz_n", { 1, 2, 3, 4, 5, 6, 8, 10, 12, 14, 16, -9999 } },
+     { "overlap", { 10, 20, 30, 40, 60, -9999 } },
+     { "do_reduce", { 0, 1, -9999 } },
+     { "overlap_edges", { 1, 0, -9999 } },
+     { "go_extra", { -6, -3, 0, 3, 6, 12, 20, -9999 } },
+-    { "nyquist", { 0.9, 0.925, 0.95, 0.975, -9999 } },
++    { "nyquist", { 0.9f, 0.925f, 0.95f, 0.975f, -9999 } },
+     { "oddrate", { 0, 1, -9999 } },
+     { "fftw_type", { 0, 64, 32, -9999 } },
+     { "reduce_extra", { -50, -30, -25, -20, -10, 0, 10, 25, 50, -9999 } },
+-    { "reduce_factor", { 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, -9999 } },
++    { "reduce_factor", { 0.1f, 0.15f, 0.2f, 0.25f, 0.3f, 0.35f, 0.4f, -9999 } },
+     { "reduce_shoulder", { -1, 1, 10, 20, 30, 50, 70, -9999 } },
+     { "known_strength_how", { 0, 1, 2, 3, 4, 5, 6, 7, -9999 } },
+     { "do_third", { 0, 1, 2, -9999 } },
+     { "strength_how", { 0, 1, 2, 3, 4, 5, 6, -9999 } },
+-    { "coarse_all", { -1, 0.125, 0.25, 0.5, 1, -9999 } },
++    { "coarse_all", { -1, 0.125f, 0.25f, 0.5f, 1, -9999 } },
+     { "coarse_strength_how", { 0, 1, 2, 3, 4, 5, 6, -9999 } },
+-    { "shoulder200_extra", { -1.0, 0, 1.0, 2.0, 3.0, 4.0, -9999 } },
++    { "shoulder200_extra", { -1.0f, 0, 1.0f, 2.0f, 3.0f, 4.0f, -9999 } },
+     { "shoulder200", { 4, 6, 8, 10, 12, 14, 15, 16, 17, 18, -9999 } },
+     { "reduce_how", { 0, 1, 2, 3, 4, -9999 } },
+     { "nthreads", { 1, 2, 3, 4, -9999 } },
+@@ -294,7 +294,7 @@
+     { "soft_pairs", { 0, 1, -9999 } },
+     { "soft_triples", { 0, 1, -9999 } },
+     { "fine_max_tone", { 2, 3, 4, 5, 6, 7, 8, -9999 } },
+-    { "fine_thresh", { 0.05, 0.1, 0.15, 0.18, 0.2, 0.22, 0.25, 0.3, 0.35, 0.4, -9999 } },
++    { "fine_thresh", { 0.05f, 0.1f, 0.15f, 0.18f, 0.2f, 0.22f, 0.25f, 0.3f, 0.35f, 0.4f, -9999 } },
+     { "fine_max_off", { 1, 2, 3, -9999 } },
+     { "soft_phase_win", { -1, 1, 2, 3, -9999 } },
+     { "do_fine_hz", { 0, 1, -9999 } },
+@@ -303,26 +303,26 @@
+     { "npasses", { 1, 2, 3, 4, -9999 } },
+     { "second_count", { 1, 2, 3, -9999 } },
+     { "ldpc_iters", { 5, 10, 15, 20, 25, 30, 40, 50, 60, 80, 100, -9999 } },
+-    { "log_tail", { 0.3, 0.2, 0.15, 0.1, 0.05, -9999 } },
+-    { "pass0_frac", { 0.8, 1.0, 1.2, 1.4, -9999 } },
++    { "log_tail", { 0.3f, 0.2f, 0.15f, 0.1f, 0.05f, -9999 } },
++    { "pass0_frac", { 0.8f, 1.0f, 1.2f, 1.4f, -9999 } },
+     { "use_hints", { 0, 1, 2, -9999 } },
+     { "already_hz", { 10, 20, 30, 40, 60, -9999 } },
+-    { "tminus", { 2.8, 2.6, 2.4, 2.2, 2.0, 1.8, -9999 } },
+-    { "tplus", { 2.0, 2.2, 2.4, 2.6, 2.7, 2.8, 3.0, -9999 } },
++    { "tminus", { 2.8f, 2.6f, 2.4f, 2.2f, 2.0f, 1.8f, -9999 } },
++    { "tplus", { 2.0f, 2.2f, 2.4f, 2.6f, 2.7f, 2.8f, 3.0f, -9999 } },
+     { "log_rate", { 4, 6, 8, 10, 12, -9999 } },
+     { "pass_threshold", { 1, 2, 3, 4, 8, -9999 } },
+-    { "budget", { 0.5, 1.5, 2.2, 5.0, 10, -9999 } },
++    { "budget", { 0.5f, 1.5f, 2.2f, 5.0f, 10, -9999 } },
+     { 0, { -9999 } },
+   };
+ 
+ void
+ optimize()
+ {
+-  extern double set(std::string param, std::string val);
++  extern float set(std::string param, std::string val);
+ 
+   verbose = 0;
+   for(int i = 0; vars[i].name; i++){
+-    double original = set(vars[i].name, "");
++    float original = set(vars[i].name, "");
+ 
+     for(int j = 0; vars[i].vals[j] > -9998; j++){
+       printf("%s %.4f : ", vars[i].name, vars[i].vals[j]);
+diff -Nuar fate-origin_main.orig/common.h fate-origin_main/common.h
+--- fate-origin_main.orig/common.h	2022-02-10 17:01:24.000000000 -0500
++++ fate-origin_main/common.h	2025-07-16 21:25:41.000000000 -0400
+@@ -8,4 +8,4 @@
+ int benchmark();
+ void optimize();
+ 
+-void call_entry(std::vector<double> samples, int nominal_start, int rate, cb_t cb);
++void call_entry(std::vector<float> samples, int nominal_start, int rate, cb_t cb);
+diff -Nuar fate-origin_main.orig/defs.h fate-origin_main/defs.h
+--- fate-origin_main.orig/defs.h	2022-02-10 17:01:24.000000000 -0500
++++ fate-origin_main/defs.h	2025-07-16 21:31:20.000000000 -0400
+@@ -3,9 +3,9 @@
+ 
+ extern int check_crc(const int a91[91]);
+ 
+-void ldpc_decode(double llcodeword[], int iters, int plain[], int *ok);
++void ldpc_decode(float llcodeword[], int iters, int plain[], int *ok);
+ 
+-extern int osd_decode(double codeword[174], int depth, int out[87], int*);
++extern int osd_decode(float codeword[174], int depth, int out[87], int*);
+ 
+ extern void ldpc_encode(int plain[87], int codeword[174]);
+ 
+diff -Nuar fate-origin_main.orig/fate.cc fate-origin_main/fate.cc
+--- fate-origin_main.orig/fate.cc	2022-02-10 17:01:24.000000000 -0500
++++ fate-origin_main/fate.cc	2025-07-20 21:29:07.608058117 -0400
+@@ -49,10 +49,10 @@
+ class Line {
+ public:
+   std::string call_;
+-  double hz_;
++  float hz_;
+   std::string text_;
+-  double last_; // UNIX time we last saw
+-  double snr_;
++  float last_; // UNIX time we last saw
++  float snr_;
+ };
+ 
+ std::vector<Line> lines;
+@@ -84,8 +84,8 @@
+     lay.tx_rows = (rows - 18 - 2) / 2;
+     lay.rx_rows = (rows - 18 - 2) / 2;
+   } else {
+-    lay.tx_rows = rows / 3.5;
+-    lay.rx_rows = rows / 3.5;
++    lay.tx_rows = rows / 3.5f;
++    lay.rx_rows = rows / 3.5f;
+   }
+   lay.pan_rows = rows - lay.tx_rows - lay.rx_rows - 1;
+ }
+@@ -397,8 +397,8 @@
+ // the signal we're talking to.
+ //
+ std::string rx_call;
+-double rx_hz = 0;
+-double rx_snr = 0;
++float rx_hz = 0;
++float rx_snr = 0;
+ std::mutex rx_buf_mu;
+ FILE *qso_fp = 0;
+ std::string rx_buf;
+@@ -406,7 +406,7 @@
+ // buffer of characters I want to transmit.
+ std::mutex tx_buf_mu;
+ std::string tx_buf;
+-double tx_hz = -1;
++float tx_hz = -1;
+ 
+ volatile int transmitting = 0;
+ std::string display_status;
+@@ -420,7 +420,7 @@
+ {
+   for(int tries = 0; tries < 20; tries++){
+     int slot = random() % (1500 / 50);
+-    double hz = 1000 + slot * 50;
++    float hz = 1000 + slot * 50;
+     bool ok = true;
+     lines_mu.lock();
+     for(int i = 0; i < lines.size(); i++){
+@@ -604,8 +604,8 @@
+ }
+ 
+ int
+-fate_cb(int *a87, double hz0, double hz1, double off,
+-        const char *comment, double snr, int pass, int correct_bits)
++fate_cb(int *a87, float hz0, float hz1, float off,
++        const char *comment, float snr, int pass, int correct_bits)
+ {
+   std::string other_call;
+   
+@@ -623,10 +623,10 @@
+   lines_mu.lock();
+ 
+   int found = -1;
+-  double found_dhz = 1000;
++  float found_dhz = 1000;
+   int empty = -1;
+   int oldest_i = -1;
+-  double oldest_time = 0;
++  float oldest_time = 0;
+   for(int i = 0; i < (int) lines.size(); i++){
+     if(lines[i].hz_ < 0 && empty < 0){
+       empty = i;
+@@ -636,7 +636,7 @@
+       oldest_time = lines[i].last_;
+     }
+     if(lines[i].hz_ >= 0){
+-      double dhz = std::abs(lines[i].hz_ - hz0);
++      float dhz = std::abs(lines[i].hz_ - hz0);
+       if(dhz < 20 && dhz < found_dhz){
+         found_dhz = dhz;
+         found = i;
+@@ -685,21 +685,21 @@
+   return 2; // indicate it's a good-looking new decode.
+ }
+ 
+-std::vector<double>
+-costone(double hz, int rate, int n)
++std::vector<float>
++costone(float hz, int rate, int n)
+ {
+-  std::vector<double> v;
++  std::vector<float> v;
+   assert(hz < rate/2);
+-  static double phase = 0;
++  static float phase = 0;
+   for(int i = 0; i < n; i++){
+-    v.push_back(cos(phase));
+-    phase += hz * 2 * M_PI / rate;
++    v.push_back(cosf(phase));
++    phase += hz * 2 * M_PIf / rate;
+   }
+   return v;
+ }
+ 
+ void
+-transmit(SoundOut *sout, std::vector<double> samples, const std::string status)
++transmit(SoundOut *sout, std::vector<float> samples, const std::string status)
+ {
+   if(sout == 0)
+     return;
+@@ -710,14 +710,14 @@
+     dtr_tx();
+   
+   display_status = status;
+-  double howlong = samples.size() / (double) sout->rate();
++  float howlong = samples.size() / (float) sout->rate();
+ 
+   transmitting = 1;
+-  double t0 = now();
++  float t0 = now();
+ 
+   sout->write(samples);
+ 
+-  double t1 = now();
++  float t1 = now();
+   usleep((howlong - (t1 - t0)) * 1000000);
+ 
+   transmitting = 0;
+@@ -744,13 +744,13 @@
+     choose_tx_hz();
+ 
+   if(rx_call.size() > 0 && mycall.size() > 0){
+-    std::vector<double> samples = pack_directed(mycall, rx_call, 31, 0, 1, sout->rate(), tx_hz);
++    std::vector<float> samples = pack_directed(mycall, rx_call, 31, 0, 1, sout->rate(), tx_hz);
+     transmit(sout, samples, "START");
+   }
+ 
+   while(1){
+-    double sec = cycle_second();
+-    if(sec >= 0.4 && sec < 1.5){
++    float sec = cycle_second();
++    if(sec >= 0.4f && sec < 1.5f){
+       // we need to know how much would be consumed in order
+       // to decide whether to set itype = 2 (end of "over").
+       int consumed;
+@@ -781,7 +781,7 @@
+         }
+       }
+ 
+-      std::vector<double> samples = pack_text(txt, consumed, itype, sout->rate(), tx_hz);
++      std::vector<float> samples = pack_text(txt, consumed, itype, sout->rate(), tx_hz);
+       std::string xtxt = txt;
+       if(itype == 2)
+         xtxt += " <>";
+@@ -825,12 +825,12 @@
+ 
+     if(tune){
+       // a one-second tone 
+-      std::vector<double> v = costone(1500, sout->rate(), sout->rate());
++      std::vector<float> v = costone(1500, sout->rate(), sout->rate());
+       transmit(sout, v, "tone");
+     }
+ 
+-    double sec = cycle_second();
+-    if(sec >= 0.4 && sec < 1.5){
++    float sec = cycle_second();
++    if(sec >= 0.4f && sec < 1.5f){
+       //
+       // start of a 15-second cycle -- send if there's
+       // any typed input.
+@@ -861,21 +861,21 @@
+ 
+       if(do_cq){
+         choose_tx_hz();
+-        std::vector<double> samples = pack_cq(mycall, mygrid, sout->rate(), tx_hz);
++        std::vector<float> samples = pack_cq(mycall, mygrid, sout->rate(), tx_hz);
+         transmit(sout, samples, "CQ CQ CQ");
+       } else if(do_reply){
+         if(tx_hz < 0)
+           choose_tx_hz();
+         if(rx_call.size() > 0){
+           // 19 is HW CPY?
+-          std::vector<double> samples = pack_directed(mycall, rx_call, 19, 0, 3, sout->rate(), tx_hz);
++          std::vector<float> samples = pack_directed(mycall, rx_call, 19, 0, 3, sout->rate(), tx_hz);
+           transmit(sout, samples, "HW CPY?");
+         }
+       } else if(do_snr){
+         if(tx_hz < 0)
+           choose_tx_hz();
+         if(rx_call.size() > 0){
+-          std::vector<double> samples = pack_directed(mycall, rx_call, 25, rx_snr + 31, 3, sout->rate(), tx_hz);
++          std::vector<float> samples = pack_directed(mycall, rx_call, 25, rx_snr + 31, 3, sout->rate(), tx_hz);
+           transmit(sout, samples, "SNR");
+         }
+       } else if(do_text){
+@@ -949,7 +949,7 @@
+       }
+     }
+ 
+-    while(lay.pan_rows < (int) lines.size()){
++    while(lines.size() > 0 && lay.pan_rows < (int) lines.size()){
+       lines.pop_back();
+     }
+ 
+@@ -987,7 +987,7 @@
+   exit(0);
+ #endif
+   
+-  double only = -1;
++  float only = -1;
+   char *incard = 0;
+   char *inchan = 0;
+   char *outcard = 0;
+@@ -1017,7 +1017,7 @@
+       exit(0);
+     } else if(strcmp(argv[ai], "-only") == 0 && ai+1 < argc){
+       ai++;
+-      only = atof(argv[ai]);
++      only = strtof(argv[ai], NULL);
+       ai++;
+     } else if(strcmp(argv[ai], "-card") == 0 && ai+2 < argc){
+       ai++;
+diff -Nuar fate-origin_main.orig/fft.cc fate-origin_main/fft.cc
+--- fate-origin_main.orig/fft.cc	2022-02-10 17:01:24.000000000 -0500
++++ fate-origin_main/fft.cc	2025-07-19 10:02:20.821312801 -0400
+@@ -14,8 +14,8 @@
+ #define TIMING 0
+ 
+ // a cached fftw plan, for both of:
+-// fftw_plan_dft_r2c_1d(n, m_in, m_out, FFTW_ESTIMATE);
+-// fftw_plan_dft_c2r_1d(n, m_in, m_out, FFTW_ESTIMATE);
++// fftwf_plan_dft_r2c_1d(n, m_in, m_out, FFTW_ESTIMATE);
++// fftwf_plan_dft_c2r_1d(n, m_in, m_out, FFTW_ESTIMATE);
+ class Plan {
+ public:
+   int n_;
+@@ -24,22 +24,22 @@
+   //
+   // real -> complex
+   //
+-  fftw_complex *c_; // (n_ / 2) + 1 of these
+-  double *r_; // n_ of these
+-  fftw_plan fwd_; // forward plan
+-  fftw_plan rev_; // reverse plan
++  fftwf_complex *c_; // (n_ / 2) + 1 of these
++  float *r_; // n_ of these
++  fftwf_plan fwd_; // forward plan
++  fftwf_plan rev_; // reverse plan
+ 
+   //
+   // complex -> complex
+   //
+-  fftw_complex *cc1_; // n
+-  fftw_complex *cc2_; // n
+-  fftw_plan cfwd_; // forward plan
+-  fftw_plan crev_; // reverse plan
++  fftwf_complex *cc1_; // n
++  fftwf_complex *cc2_; // n
++  fftwf_plan cfwd_; // forward plan
++  fftwf_plan crev_; // reverse plan
+ 
+   // how much CPU time spent in FFTs that use this plan.
+ #if TIMING
+-  double time_;
++  float time_;
+ #endif
+   const char *why_;
+   int uses_;
+@@ -76,7 +76,7 @@
+     }
+   }
+ 
+-  double t0 = now();
++  float t0 = now();
+ 
+   // fftw_make_planner_thread_safe();
+ 
+@@ -90,7 +90,7 @@
+   int lockret = flock(lockfd, LOCK_EX);
+   assert(lockret == 0);
+ 
+-  fftw_set_timelimit(5);
++  fftwf_set_timelimit(5);
+ 
+   //
+   // real -> complex
+@@ -104,9 +104,9 @@
+ #endif
+   p->uses_ = 1;
+   p->why_ = why;
+-  p->r_ = (double*) fftw_malloc(n * sizeof(double));
++  p->r_ = (float*) fftwf_malloc(n * sizeof(float));
+   assert(p->r_);
+-  p->c_ = (fftw_complex*) fftw_malloc(((n/2)+1) * sizeof(fftw_complex));
++  p->c_ = (fftwf_complex*) fftwf_malloc(((n/2)+1) * sizeof(fftwf_complex));
+   assert(p->c_);
+   
+   // FFTW_ESTIMATE
+@@ -118,21 +118,21 @@
+     type = FFTW_ESTIMATE;
+   }
+   p->type_ = type;
+-  p->fwd_ = fftw_plan_dft_r2c_1d(n, p->r_, p->c_, type);
++  p->fwd_ = fftwf_plan_dft_r2c_1d(n, p->r_, p->c_, type);
+   assert(p->fwd_);
+-  p->rev_ = fftw_plan_dft_c2r_1d(n, p->c_, p->r_, type);
++  p->rev_ = fftwf_plan_dft_c2r_1d(n, p->c_, p->r_, type);
+   assert(p->rev_);
+   
+   //
+   // complex -> complex
+   //
+-  p->cc1_ = (fftw_complex*) fftw_malloc(n * sizeof(fftw_complex));
++  p->cc1_ = (fftwf_complex*) fftwf_malloc(n * sizeof(fftwf_complex));
+   assert(p->cc1_);
+-  p->cc2_ = (fftw_complex*) fftw_malloc(n * sizeof(fftw_complex));
++  p->cc2_ = (fftwf_complex*) fftwf_malloc(n * sizeof(fftwf_complex));
+   assert(p->cc2_);
+-  p->cfwd_ = fftw_plan_dft_1d(n, p->cc1_, p->cc2_, FFTW_FORWARD, type);
++  p->cfwd_ = fftwf_plan_dft_1d(n, p->cc1_, p->cc2_, FFTW_FORWARD, type);
+   assert(p->cfwd_);
+-  p->crev_ = fftw_plan_dft_1d(n, p->cc2_, p->cc1_, FFTW_BACKWARD, type);
++  p->crev_ = fftwf_plan_dft_1d(n, p->cc2_, p->cc1_, FFTW_BACKWARD, type);
+   assert(p->crev_);
+ 
+   flock(lockfd, LOCK_UN);
+@@ -145,7 +145,7 @@
+   nplans += 1;
+ 
+   if(0 && getpid() == plan_master_pid){
+-    double t1 = now();
++    float t1 = now();
+     fprintf(stderr, "miss pid=%d master=%d n=%d t=%.3f total=%d type=%d, %s\n",
+             getpid(), plan_master_pid, n, t1 - t0, nplans, type, why);
+   }
+@@ -160,8 +160,8 @@
+ // real inputs, complex outputs.
+ // output has (block / 2) + 1 points.
+ //
+-std::vector<std::complex<double>>
+-one_fft(const std::vector<double> &samples, int i0, int block,
++std::vector<std::complex<float>>
++one_fft(const std::vector<float> &samples, int i0, int block,
+         const char *why, Plan *p)
+ {
+   assert(i0 >= 0);
+@@ -176,20 +176,20 @@
+   } else {
+     p = get_plan(block, why);
+   }
+-  fftw_plan m_plan = p->fwd_;
++  fftwf_plan m_plan = p->fwd_;
+ 
+ #if TIMING
+-  double t0 = now();
++  float t0 = now();
+ #endif
+ 
+   assert((int) samples.size() - i0 >= block);
+ 
+   int m_in_allocated = 0;
+-  double *m_in = (double*) samples.data() + i0;
++  float *m_in = (float*) samples.data() + i0;
+ 
+   if((((unsigned long long)m_in) % 16) != 0){
+     // m_in must be on a 16-byte boundary for FFTW.
+-    m_in = (double *) fftw_malloc(sizeof(double) * p->n_);
++    m_in = (float *) fftwf_malloc(sizeof(float) * p->n_);
+     assert(m_in);
+     m_in_allocated = 1;
+     for(int i = 0; i < block; i++){
+@@ -201,23 +201,23 @@
+     }
+   }
+ 
+-  fftw_complex *m_out = (fftw_complex *) fftw_malloc(sizeof(fftw_complex) *
+-                                                     ((p->n_ / 2) + 1));
++  fftwf_complex *m_out = (fftwf_complex *) fftwf_malloc(sizeof(fftwf_complex) *
++                                                        ((p->n_ / 2) + 1));
+   assert(m_out);
+ 
+-  fftw_execute_dft_r2c(m_plan, m_in, m_out);
++  fftwf_execute_dft_r2c(m_plan, m_in, m_out);
+ 
+-  std::vector<std::complex<double>> out(nbins);
++  std::vector<std::complex<float>> out(nbins);
+ 
+   for(int bi = 0; bi < nbins; bi++){
+-    double re = m_out[bi][0];
+-    double im = m_out[bi][1];
+-    out[bi] = std::complex<double>(re, im);
++    float re = m_out[bi][0];
++    float im = m_out[bi][1];
++    out[bi] = std::complex<float>(re, im);
+   }
+ 
+   if(m_in_allocated)
+-    fftw_free(m_in);
+-  fftw_free(m_out);
++    fftwf_free(m_in);
++  fftwf_free(m_out);
+ 
+ #if TIMING
+   p->time_ += now() - t0;
+@@ -231,7 +231,7 @@
+ // bins[time][frequency]
+ //
+ ffts_t
+-ffts(const std::vector<double> &samples, int i0, int block, const char *why)
++ffts(const std::vector<float> &samples, int i0, int block, const char *why)
+ {
+   assert(i0 >= 0);
+   assert(block > 1 && (block % 2) == 0);
+@@ -245,44 +245,44 @@
+   }
+ 
+   Plan *p = get_plan(block, why);
+-  fftw_plan m_plan = p->fwd_;
++  fftwf_plan m_plan = p->fwd_;
+ 
+ #if TIMING
+-  double t0 = now();
++  float t0 = now();
+ #endif
+ 
+   // allocate our own b/c using p->m_in and p->m_out isn't thread-safe.
+-  double *m_in = (double *) fftw_malloc(sizeof(double) * p->n_);
+-  fftw_complex *m_out = (fftw_complex *) fftw_malloc(sizeof(fftw_complex) *
+-                                                     ((p->n_ / 2) + 1));
++  float *m_in = (float *) fftwf_malloc(sizeof(float) * p->n_);
++  fftwf_complex *m_out = (fftwf_complex *) fftwf_malloc(sizeof(fftwf_complex) *
++                                                        ((p->n_ / 2) + 1));
+   assert(m_in && m_out);
+ 
+-  // double *m_in = p->r_;
+-  // fftw_complex *m_out = p->c_;
++  // float *m_in = p->r_;
++  // fftwf_complex *m_out = p->c_;
+ 
+   for(int si = 0; si < nblocks; si++){
+     int off = i0 + si * block;
+     for(int i = 0; i < block; i++){
+       if(off + i < nsamples){
+-        double x = samples[off + i];
++        float x = samples[off + i];
+         m_in[i] = x;
+       } else {
+         m_in[i] = 0;
+       }
+     }
+ 
+-    fftw_execute_dft_r2c(m_plan, m_in, m_out);
++    fftwf_execute_dft_r2c(m_plan, m_in, m_out);
+ 
+     for(int bi = 0; bi < nbins; bi++){
+-      double re = m_out[bi][0];
+-      double im = m_out[bi][1];
+-      std::complex<double> c(re, im);
++      float re = m_out[bi][0];
++      float im = m_out[bi][1];
++      std::complex<float> c(re, im);
+       bins[si][bi] = c;
+     }
+   }
+ 
+-  fftw_free(m_in);
+-  fftw_free(m_out);
++  fftwf_free(m_in);
++  fftwf_free(m_out);
+ 
+ #if TIMING
+   p->time_ += now() - t0;
+@@ -296,8 +296,8 @@
+ // real inputs, complex outputs.
+ // output has block points.
+ //
+-std::vector<std::complex<double>>
+-one_fft_c(const std::vector<double> &samples, int i0, int block, const char *why)
++std::vector<std::complex<float>>
++one_fft_c(const std::vector<float> &samples, int i0, int block, const char *why)
+ {
+   assert(i0 >= 0);
+   assert(block > 1);
+@@ -305,14 +305,14 @@
+   int nsamples = samples.size();
+ 
+   Plan *p = get_plan(block, why);
+-  fftw_plan m_plan = p->cfwd_;
++  fftwf_plan m_plan = p->cfwd_;
+ 
+ #if TIMING
+-  double t0 = now();
++  float t0 = now();
+ #endif
+ 
+-  fftw_complex *m_in  = (fftw_complex*) fftw_malloc(block * sizeof(fftw_complex));
+-  fftw_complex *m_out = (fftw_complex*) fftw_malloc(block * sizeof(fftw_complex));
++  fftwf_complex *m_in  = (fftwf_complex*) fftwf_malloc(block * sizeof(fftwf_complex));
++  fftwf_complex *m_out = (fftwf_complex*) fftwf_malloc(block * sizeof(fftwf_complex));
+   assert(m_in && m_out);
+ 
+   for(int i = 0; i < block; i++){
+@@ -324,21 +324,21 @@
+     m_in[i][1] = 0; // imaginary
+   }
+ 
+-  fftw_execute_dft(m_plan, m_in, m_out);
++  fftwf_execute_dft(m_plan, m_in, m_out);
+ 
+-  std::vector<std::complex<double>> out(block);
++  std::vector<std::complex<float>> out(block);
+ 
+-  double norm = 1.0 / sqrt(block);
++  float norm = 1.0f / sqrtf(block);
+   for(int bi = 0; bi < block; bi++){
+-    double re = m_out[bi][0];
+-    double im = m_out[bi][1];
+-    std::complex<double> c(re, im);
++    float re = m_out[bi][0];
++    float im = m_out[bi][1];
++    std::complex<float> c(re, im);
+     c *= norm;
+     out[bi] = c;
+   }
+     
+-  fftw_free(m_in);
+-  fftw_free(m_out);
++  fftwf_free(m_in);
++  fftwf_free(m_out);
+ 
+ #if TIMING
+   p->time_ += now() - t0;
+@@ -347,8 +347,8 @@
+   return out;
+ }
+ 
+-std::vector<std::complex<double>>
+-one_fft_cc(const std::vector<std::complex<double>> &samples, int i0, int block, const char *why)
++std::vector<std::complex<float>>
++one_fft_cc(const std::vector<std::complex<float>> &samples, int i0, int block, const char *why)
+ {
+   assert(i0 >= 0);
+   assert(block > 1);
+@@ -356,14 +356,14 @@
+   int nsamples = samples.size();
+ 
+   Plan *p = get_plan(block, why);
+-  fftw_plan m_plan = p->cfwd_;
++  fftwf_plan m_plan = p->cfwd_;
+ 
+ #if TIMING
+-  double t0 = now();
++  float t0 = now();
+ #endif
+ 
+-  fftw_complex *m_in  = (fftw_complex*) fftw_malloc(block * sizeof(fftw_complex));
+-  fftw_complex *m_out = (fftw_complex*) fftw_malloc(block * sizeof(fftw_complex));
++  fftwf_complex *m_in  = (fftwf_complex*) fftwf_malloc(block * sizeof(fftwf_complex));
++  fftwf_complex *m_out = (fftwf_complex*) fftwf_malloc(block * sizeof(fftwf_complex));
+   assert(m_in && m_out);
+ 
+   for(int i = 0; i < block; i++){
+@@ -376,21 +376,21 @@
+     }
+   }
+ 
+-  fftw_execute_dft(m_plan, m_in, m_out);
++  fftwf_execute_dft(m_plan, m_in, m_out);
+ 
+-  std::vector<std::complex<double>> out(block);
++  std::vector<std::complex<float>> out(block);
+ 
+-  //double norm = 1.0 / sqrt(block);
++  //float norm = 1.0f / sqrtf(block);
+   for(int bi = 0; bi < block; bi++){
+-    double re = m_out[bi][0];
+-    double im = m_out[bi][1];
+-    std::complex<double> c(re, im);
++    float re = m_out[bi][0];
++    float im = m_out[bi][1];
++    std::complex<float> c(re, im);
+     //c *= norm;
+     out[bi] = c;
+   }
+     
+-  fftw_free(m_in);
+-  fftw_free(m_out);
++  fftwf_free(m_in);
++  fftwf_free(m_out);
+ 
+ #if TIMING
+   p->time_ += now() - t0;
+@@ -399,43 +399,43 @@
+   return out;
+ }
+ 
+-std::vector<std::complex<double>>
+-one_ifft_cc(const std::vector<std::complex<double>> &bins, const char *why)
++std::vector<std::complex<float>>
++one_ifft_cc(const std::vector<std::complex<float>> &bins, const char *why)
+ {
+   int block = bins.size();
+ 
+   Plan *p = get_plan(block, why);
+-  fftw_plan m_plan = p->crev_;
++  fftwf_plan m_plan = p->crev_;
+ 
+ #if TIMING
+-  double t0 = now();
++  float t0 = now();
+ #endif
+ 
+-  fftw_complex *m_in = (fftw_complex*) fftw_malloc(block * sizeof(fftw_complex));
+-  fftw_complex *m_out = (fftw_complex *) fftw_malloc(block * sizeof(fftw_complex));
++  fftwf_complex *m_in = (fftwf_complex*) fftwf_malloc(block * sizeof(fftwf_complex));
++  fftwf_complex *m_out = (fftwf_complex *) fftwf_malloc(block * sizeof(fftwf_complex));
+   assert(m_in && m_out);
+ 
+   for(int bi = 0; bi < block; bi++){
+-    double re = bins[bi].real();
+-    double im = bins[bi].imag();
++    float re = bins[bi].real();
++    float im = bins[bi].imag();
+     m_in[bi][0] = re;
+     m_in[bi][1] = im;
+   }
+ 
+-  fftw_execute_dft(m_plan, m_in, m_out);
++  fftwf_execute_dft(m_plan, m_in, m_out);
+ 
+-  std::vector<std::complex<double>> out(block);
+-  double norm = 1.0 / sqrt(block);
++  std::vector<std::complex<float>> out(block);
++  float norm = 1.0f / sqrtf(block);
+   for(int i = 0; i < block; i++){
+-    double re = m_out[i][0];
+-    double im = m_out[i][1];
+-    std::complex<double> c(re, im);
++    float re = m_out[i][0];
++    float im = m_out[i][1];
++    std::complex<float> c(re, im);
+     c *= norm;
+     out[i] = c;
+   }
+ 
+-  fftw_free(m_in);
+-  fftw_free(m_out);
++  fftwf_free(m_in);
++  fftwf_free(m_out);
+ 
+ #if TIMING
+   p->time_ += now() - t0;
+@@ -444,39 +444,39 @@
+   return out;
+ }
+ 
+-std::vector<double>
+-one_ifft(const std::vector<std::complex<double>> &bins, const char *why)
++std::vector<float>
++one_ifft(const std::vector<std::complex<float>> &bins, const char *why)
+ {
+   int nbins = bins.size();
+   int block = (nbins - 1) * 2;
+ 
+   Plan *p = get_plan(block, why);
+-  fftw_plan m_plan = p->rev_;
++  fftwf_plan m_plan = p->rev_;
+ 
+ #if TIMING
+-  double t0 = now();
++  float t0 = now();
+ #endif
+ 
+-  fftw_complex *m_in = (fftw_complex *) fftw_malloc(sizeof(fftw_complex) *
+-                                                    ((p->n_ / 2) + 1));
+-  double *m_out = (double *) fftw_malloc(sizeof(double) * p->n_);
++  fftwf_complex *m_in = (fftwf_complex *) fftwf_malloc(sizeof(fftwf_complex) *
++                                                       ((p->n_ / 2) + 1));
++  float *m_out = (float *) fftwf_malloc(sizeof(float) * p->n_);
+ 
+   for(int bi = 0; bi < nbins; bi++){
+-    double re = bins[bi].real();
+-    double im = bins[bi].imag();
++    float re = bins[bi].real();
++    float im = bins[bi].imag();
+     m_in[bi][0] = re;
+     m_in[bi][1] = im;
+   }
+ 
+-  fftw_execute_dft_c2r(m_plan, m_in, m_out);
++  fftwf_execute_dft_c2r(m_plan, m_in, m_out);
+ 
+-  std::vector<double> out(block);
++  std::vector<float> out(block);
+   for(int i = 0; i < block; i++){
+     out[i] = m_out[i];
+   }
+ 
+-  fftw_free(m_in);
+-  fftw_free(m_out);
++  fftwf_free(m_in);
++  fftwf_free(m_out);
+ 
+ #if TIMING
+   p->time_ += now() - t0;
+@@ -492,12 +492,12 @@
+ //
+ // the return value is x + iy, where y is the hilbert transform of x.
+ //
+-std::vector<std::complex<double>>
+-analytic(const std::vector<double> &x, const char *why)
++std::vector<std::complex<float>>
++analytic(const std::vector<float> &x, const char *why)
+ {
+   ulong n = x.size();
+ 
+-  std::vector<std::complex<double>> y = one_fft_c(x, 0, n, why);
++  std::vector<std::complex<float>> y = one_fft_c(x, 0, n, why);
+   assert(y.size() == n);
+ 
+   // leave y[0] alone.
+@@ -516,7 +516,7 @@
+       y[i] = 0;
+   }
+       
+-  std::vector<std::complex<double>> z = one_ifft_cc(y, why);
++  std::vector<std::complex<float>> z = one_ifft_cc(y, why);
+ 
+   return z;
+ }
+@@ -532,22 +532,22 @@
+ //
+ // like weakutil.py's freq_shift().
+ //
+-std::vector<double>
+-hilbert_shift(const std::vector<double> &x, double hz0, double hz1, int rate)
++std::vector<float>
++hilbert_shift(const std::vector<float> &x, float hz0, float hz1, int rate)
+ {
+   // y = scipy.signal.hilbert(x)
+-  std::vector<std::complex<double>> y = analytic(x, "hilbert_shift");
++  std::vector<std::complex<float>> y = analytic(x, "hilbert_shift");
+   assert(y.size() == x.size());
+ 
+-  double dt = 1.0 / rate;
++  float dt = 1.0f / rate;
+   int n = x.size();
+ 
+-  std::vector<double> ret(n);
++  std::vector<float> ret(n);
+   
+   for(int i = 0; i < n; i++){
+     // complex "local oscillator" at hz.
+-    double hz = hz0 + (i / (double)n) * (hz1 - hz0);
+-    std::complex<double> lo = std::exp(std::complex<double>(0.0, 2 * M_PI * hz * dt * i));
++    float hz = hz0 + (i / (float)n) * (hz1 - hz0);
++    std::complex<float> lo = std::exp(std::complex<float>(0.0f, 2 * M_PIf * hz * dt * i));
+     ret[i] = (lo * y[i]).real();
+   }
+ 
+diff -Nuar fate-origin_main.orig/fft.h fate-origin_main/fft.h
+--- fate-origin_main.orig/fft.h	2022-02-10 17:01:24.000000000 -0500
++++ fate-origin_main/fft.h	2025-07-16 20:30:26.000000000 -0400
+@@ -8,30 +8,30 @@
+ class Plan;
+ Plan *get_plan(int n, const char *why);
+ 
+-std::vector<std::complex<double>> one_fft(const std::vector<double> &samples,
+-                                          int i0, int block, const char *why,
+-                                          Plan *p);
++std::vector<std::complex<float>> one_fft(const std::vector<float> &samples,
++                                         int i0, int block, const char *why,
++                                         Plan *p);
+ 
+-std::vector<double> one_ifft(const std::vector<std::complex<double>> &bins,
+-                             const char *why);
++std::vector<float> one_ifft(const std::vector<std::complex<float>> &bins,
++                            const char *why);
+ 
+-typedef std::vector< std::vector< std::complex<double> > > ffts_t;
++typedef std::vector< std::vector< std::complex<float> > > ffts_t;
+ 
+-ffts_t ffts(const std::vector<double> &samples, int i0, int block, const char *why);
++ffts_t ffts(const std::vector<float> &samples, int i0, int block, const char *why);
+ 
+-std::vector<std::complex<double>> one_fft_c(const std::vector<double> &samples,
+-                                            int i0, int block, const char *why);
++std::vector<std::complex<float>> one_fft_c(const std::vector<float> &samples,
++                                           int i0, int block, const char *why);
+ 
+-std::vector<std::complex<double>>
+-one_fft_cc(const std::vector<std::complex<double>> &samples, int i0, int block, const char *why);
++std::vector<std::complex<float>>
++one_fft_cc(const std::vector<std::complex<float>> &samples, int i0, int block, const char *why);
+ 
+-std::vector<std::complex<double>> one_ifft_cc(const std::vector<std::complex<double>> &bins, const char *why);
++std::vector<std::complex<float>> one_ifft_cc(const std::vector<std::complex<float>> &bins, const char *why);
+ 
+-std::vector<std::complex<double>> analytic(const std::vector<double> &x,
+-                                           const char *why);
++std::vector<std::complex<float>> analytic(const std::vector<float> &x,
++                                          const char *why);
+ 
+-std::vector<double> hilbert_shift(const std::vector<double> &x,
+-                                  double hz0, double hz1, int rate);
++std::vector<float> hilbert_shift(const std::vector<float> &x,
++                                 float hz0, float hz1, int rate);
+ 
+ 
+ #endif
+diff -Nuar fate-origin_main.orig/js8.cc fate-origin_main/js8.cc
+--- fate-origin_main.orig/js8.cc	2022-02-10 17:01:24.000000000 -0500
++++ fate-origin_main/js8.cc	2025-07-19 10:10:40.009771526 -0400
+@@ -58,24 +58,24 @@
+ // total transmission time is 12.64 seconds
+ 
+ // tunable parameters
+-double budget = 2.2;
++float budget = 2.2f;
+ int nthreads = 2; // number of parallel threads, for multi-core
+ int npasses = 3;  // number of spectral subtraction passes
+ int ldpc_iters = 25; // how hard LDPC decoding should work
+ int snr_win = 7; // averaging window, in symbols, for SNR conversion
+ int snr_how = 3; // technique to measure "N" for SNR. 0 means median of the 8 tones.
+-double shoulder200 = 10; // for 200 sps bandpass filter
+-double shoulder200_extra = 0.0; // for bandpass filter
+-double second_hz_win = 3.5; // +/- hz
++float shoulder200 = 10; // for 200 sps bandpass filter
++float shoulder200_extra = 0.0f; // for bandpass filter
++float second_hz_win = 3.5f; // +/- hz
+ int second_hz_n = 8; // divide total window into this many pieces
+-double second_off_win = 0.5; // +/- search window in symbol-times
++float second_off_win = 0.5f; // +/- search window in symbol-times
+ int second_off_n = 10;
+ int third_hz_n = 3;
+-double third_hz_win = 0.25;
++float third_hz_win = 0.25f;
+ int third_off_n = 4;
+-double third_off_win = 0.075;
+-double log_tail = 0.1;
+-double log_rate = 8.0;
++float third_off_win = 0.075f;
++float log_tail = 0.1f;
++float log_rate = 8.0f;
+ int problt_how_noise = 0;
+ int problt_how_sig = 0;
+ int use_apriori = 0;
+@@ -85,30 +85,30 @@
+ int osd_ldpc_thresh = 70; // demand this many correct LDPC parity bits before OSD
+ int ncoarse = 1; // number of offsets per hz produced by coarse()
+ int ncoarse_blocks = 1;
+-double tminus = 2.2; // start looking at 0.5 - tminus seconds
+-double tplus = 2.4;
++float tminus = 2.2f; // start looking at 0.5 - tminus seconds
++float tplus = 2.4f;
+ int coarse_off_n = 4;
+ int coarse_hz_n = 4;
+-double already_hz = 27;
+-double overlap = 20;
++float already_hz = 27;
++float overlap = 20;
+ int overlap_edges = 0;
+-double nyquist = 0.925;
++float nyquist = 0.925f;
+ int oddrate = 1;
+-double pass0_frac = 1.0;
++float pass0_frac = 1.0f;
+ int reduce_how = 2;
+-double go_extra = 3.5;
++float go_extra = 3.5f;
+ int do_reduce = 1;
+ int pass_threshold = 1;
+ int strength_how = 4;
+ int known_strength_how = 7;
+ int coarse_strength_how = 6;
+-double reduce_shoulder = -1;
+-double reduce_factor = 0.25;
+-double reduce_extra = 0;
+-double coarse_all = -1;
++float reduce_shoulder = -1;
++float reduce_factor = 0.25f;
++float reduce_extra = 0;
++float coarse_all = -1;
+ int second_count = 3;
+ int soft_phase_win = 2;
+-double subtract_ramp = 0.11;
++float subtract_ramp = 0.11f;
+ extern int fftw_type; // fft.cc. MEASURE=0, ESTIMATE=64, PATIENT=32
+ int soft_ones = 2;
+ int soft_pairs = 1;
+@@ -117,11 +117,11 @@
+ int do_fine_hz = 1;
+ int do_fine_off = 1;
+ int do_third = 2;
+-double fine_thresh = 0.19;
++float fine_thresh = 0.19f;
+ int fine_max_off = 2;
+ int fine_max_tone = 4;
+ int known_sparse = 1;
+-double c_soft_weight = 7;
++float c_soft_weight = 7;
+ int c_soft_win = 3;
+ 
+ int costas[] = { 4, 2, 5, 6, 1, 3, 0 };
+@@ -129,12 +129,12 @@
+ //
+ // return a Hamming window of length n.
+ //
+-std::vector<double>
++std::vector<float>
+ hamming(int n)
+ {
+-  std::vector<double> h(n);
++  std::vector<float> h(n);
+   for(int k = 0; k < n; k++){
+-    h[k] = 0.54 - 0.46 * cos(2 * M_PI * k / (n - 1.0));
++    h[k] = 0.54f - 0.46f * cosf(2 * M_PIf * k / (n - 1.0f));
+   }
+   return h;
+ }
+@@ -142,12 +142,12 @@
+ //
+ // blackman window
+ //
+-std::vector<double>
++std::vector<float>
+ blackman(int n)
+ {
+-  std::vector<double> h(n);
++  std::vector<float> h(n);
+   for(int k = 0; k < n; k++){
+-    h[k] = 0.42 - 0.5 * cos(2 * M_PI * k / n) + 0.08*cos(4 * M_PI * k / n);
++    h[k] = 0.42f - 0.5f * cosf(2 * M_PIf * k / n) + 0.08f*cosf(4 * M_PIf * k / n);
+   }
+   return h;
+ }
+@@ -155,12 +155,12 @@
+ //
+ // symmetric blackman window
+ //
+-std::vector<double>
++std::vector<float>
+ sym_blackman(int n)
+ {
+-  std::vector<double> h(n);
++  std::vector<float> h(n);
+   for(int k = 0; k < (n/2)+1; k++){
+-    h[k] = 0.42 - 0.5 * cos(2 * M_PI * k / n) + 0.08*cos(4 * M_PI * k / n);
++    h[k] = 0.42f - 0.5f * cosf(2 * M_PIf * k / n) + 0.08f*cosf(4 * M_PIf * k / n);
+   }
+   for(int k = n-1; k >= (n/2)+1; --k){
+     h[k] = h[(n-1)-k];
+@@ -171,27 +171,27 @@
+ //
+ // blackman-harris window
+ //
+-std::vector<double>
++std::vector<float>
+ blackmanharris(int n)
+ {
+-  double a0 = 0.35875;
+-  double a1 = 0.48829;
+-  double a2 = 0.14128;
+-  double a3 = 0.01168;
+-  std::vector<double> h(n);
++  float a0 = 0.35875f;
++  float a1 = 0.48829f;
++  float a2 = 0.14128f;
++  float a3 = 0.01168f;
++  std::vector<float> h(n);
+   for(int k = 0; k < n; k++){
+     // symmetric
+     h[k] =
+       a0 
+-      - a1 * cos(2 * M_PI * k / (n-1))
+-      + a2 * cos(4 * M_PI * k / (n-1))
+-      - a3 * cos(6 * M_PI * k / (n-1));
++      - a1 * cosf(2 * M_PIf * k / (n-1))
++      + a2 * cosf(4 * M_PIf * k / (n-1))
++      - a3 * cosf(6 * M_PIf * k / (n-1));
+     // periodic
+     //h[k] =
+     //  a0 
+-    //  - a1 * cos(2 * M_PI * k / n)
+-    //  + a2 * cos(4 * M_PI * k / n)
+-    //  - a3 * cos(6 * M_PI * k / n);
++    //  - a1 * cosf(2 * M_PIf * k / n)
++    //  + a2 * cosf(4 * M_PIf * k / n)
++    //  - a3 * cosf(6 * M_PIf * k / n);
+   }
+   return h;
+ }
+@@ -247,18 +247,18 @@
+ //
+ class Stats {
+ public:
+-  std::vector<double> a_;
+-  double sum_;
++  std::vector<float> a_;
++  float sum_;
+   bool finalized_;
+-  double mean_; // cached
+-  double stddev_; // cached
+-  double b_; // cached
++  float mean_; // cached
++  float stddev_; // cached
++  float b_; // cached
+   int how_;
+   
+ public:
+   Stats(int how) : sum_(0), finalized_(false), how_(how) { }
+ 
+-  void add(double x) {
++  void add(float x) {
+     a_.push_back(x);
+     sum_ += x;
+     finalized_ = false;
+@@ -270,15 +270,15 @@
+     int n = a_.size();
+     mean_ = sum_ / n;
+ 
+-    double var = 0;
+-    double bsum = 0;
++    float var = 0;
++    float bsum = 0;
+     for(int i = 0; i < n; i++){
+-      double y = a_[i] - mean_;
++      float y = a_[i] - mean_;
+       var += y * y;
+-      bsum += fabs(y);
++      bsum += fabsf(y);
+     }
+     var /= n;
+-    stddev_ = sqrt(var);
++    stddev_ = sqrtf(var);
+     b_ = bsum / n;
+ 
+     // prepare for binary search to find where values lie
+@@ -287,13 +287,13 @@
+       std::sort(a_.begin(), a_.end());
+   }
+ 
+-  double mean() {
++  float mean() {
+     if(!finalized_)
+       finalize();
+     return mean_;
+   }
+ 
+-  double stddev() {
++  float stddev() {
+     if(!finalized_)
+       finalize();
+     return stddev_;
+@@ -304,29 +304,29 @@
+   // this is PHI(x), or the CDF at x,
+   // or the integral from -infinity
+   // to x of the PDF.
+-  double gaussian_problt(double x) {
+-    double SDs = (x - mean()) / stddev();
+-    double frac = 0.5 * (1.0 + erf(SDs / sqrt(2.0)));
++  float gaussian_problt(float x) {
++    float SDs = (x - mean()) / stddev();
++    float frac = 0.5f * (1.0f + erff(SDs / sqrtf(2.0f)));
+     return frac;
+   }
+ 
+   // https://en.wikipedia.org/wiki/Laplace_distribution
+   // m and b from page 116 of Mark Owen's Practical Signal Processing.
+-  double laplace_problt(double x) {
+-    double m = mean();
++  float laplace_problt(float x) {
++    float m = mean();
+ 
+-    double cdf;
++    float cdf;
+     if(x < m){
+-      cdf = 0.5 * exp((x - m) / b_);
++      cdf = 0.5f * expf((x - m) / b_);
+     } else {
+-      cdf = 1.0 - 0.5 * exp(-(x - m) / b_);
++      cdf = 1.0f - 0.5f * expf(-(x - m) / b_);
+     }
+     
+     return cdf;
+   }
+ 
+   // look into the actual distribution.
+-  double problt(double x) {
++  float problt(float x) {
+     if(!finalized_)
+       finalize();
+ 
+@@ -348,30 +348,30 @@
+       // works poorly for values that are off the ends
+       // of the distribution, since those are all
+       // mapped to 0.0 or 1.0, regardless of magnitude.
+-      return i / (double) n;
++      return i / (float) n;
+     }
+ 
+     if(how_ == 2){
+       // use a kind of logistic regression for
+       // values near the edges of the distribution.
+       if(i < log_tail * n){
+-        double x0 = a_[(int)(log_tail * n)];
+-        double y = 1.0 / (1.0 + exp(-log_rate*(x-x0)));
++        float x0 = a_[(int)(log_tail * n)];
++        float y = 1.0f / (1.0f + expf(-log_rate*(x-x0)));
+         // y is 0..0.5
+         y /= 5;
+         return y;
+       } else if(i > (1-log_tail) * n){
+-        double x0 = a_[(int)((1-log_tail) * n)];
+-        double y = 1.0 / (1.0 + exp(-log_rate*(x-x0)));
++        float x0 = a_[(int)((1-log_tail) * n)];
++        float y = 1.0f / (1.0f + expf(-log_rate*(x-x0)));
+         // y is 0.5..1
+         // we want (1-log_tail)..1
+-        y -= 0.5;
++        y -= 0.5f;
+         y *= 2;
+         y *= log_tail;
+         y += (1-log_tail);
+         return y;
+       } else {
+-        return i / (double) n;
++        return i / (float) n;
+       }
+     }
+ 
+@@ -382,7 +382,7 @@
+       } else if(i > (1-log_tail) * n){
+         return gaussian_problt(x);
+       } else {
+-        return i / (double) n;
++        return i / (float) n;
+       }
+     }
+ 
+@@ -391,7 +391,7 @@
+       if(x < a_[0] || x > a_.back()){
+         return gaussian_problt(x);
+       } else {
+-        return i / (double) n;
++        return i / (float) n;
+       }
+     }
+ 
+@@ -403,32 +403,32 @@
+ // bits being one. measured from reconstructed correct
+ // codewords, into ft8bits, then python bprob.py.
+ // from ft8-n4
+-double apriori174[] = {
+-  0.47, 0.32, 0.29, 0.37, 0.52, 0.36, 0.40, 0.42, 0.42, 0.53, 0.44,
+-  0.44, 0.39, 0.46, 0.39, 0.38, 0.42, 0.43, 0.45, 0.51, 0.42, 0.48,
+-  0.31, 0.45, 0.47, 0.53, 0.59, 0.41, 0.03, 0.50, 0.30, 0.26, 0.40,
+-  0.65, 0.34, 0.49, 0.46, 0.49, 0.69, 0.40, 0.45, 0.45, 0.60, 0.46,
+-  0.43, 0.49, 0.56, 0.45, 0.55, 0.51, 0.46, 0.37, 0.55, 0.52, 0.56,
+-  0.55, 0.50, 0.01, 0.19, 0.70, 0.88, 0.75, 0.75, 0.74, 0.73, 0.18,
+-  0.71, 0.35, 0.60, 0.58, 0.36, 0.60, 0.38, 0.50, 0.02, 0.01, 0.98,
+-  0.48, 0.49, 0.54, 0.50, 0.49, 0.53, 0.50, 0.49, 0.49, 0.51, 0.51,
+-  0.51, 0.47, 0.50, 0.53, 0.51, 0.46, 0.51, 0.51, 0.48, 0.51, 0.52,
+-  0.50, 0.52, 0.51, 0.50, 0.49, 0.53, 0.52, 0.50, 0.46, 0.47, 0.48,
+-  0.52, 0.50, 0.49, 0.51, 0.49, 0.49, 0.50, 0.50, 0.50, 0.50, 0.51,
+-  0.50, 0.49, 0.49, 0.55, 0.49, 0.51, 0.48, 0.55, 0.49, 0.48, 0.50,
+-  0.51, 0.50, 0.51, 0.50, 0.51, 0.53, 0.49, 0.54, 0.50, 0.48, 0.49,
+-  0.46, 0.51, 0.51, 0.52, 0.49, 0.51, 0.49, 0.51, 0.50, 0.49, 0.50,
+-  0.50, 0.47, 0.49, 0.52, 0.49, 0.51, 0.49, 0.48, 0.52, 0.48, 0.49,
+-  0.47, 0.50, 0.48, 0.50, 0.49, 0.51, 0.51, 0.51, 0.49,
++float apriori174[] = {
++  0.47f, 0.32f, 0.29f, 0.37f, 0.52f, 0.36f, 0.40f, 0.42f, 0.42f, 0.53f, 0.44f,
++  0.44f, 0.39f, 0.46f, 0.39f, 0.38f, 0.42f, 0.43f, 0.45f, 0.51f, 0.42f, 0.48f,
++  0.31f, 0.45f, 0.47f, 0.53f, 0.59f, 0.41f, 0.03f, 0.50f, 0.30f, 0.26f, 0.40f,
++  0.65f, 0.34f, 0.49f, 0.46f, 0.49f, 0.69f, 0.40f, 0.45f, 0.45f, 0.60f, 0.46f,
++  0.43f, 0.49f, 0.56f, 0.45f, 0.55f, 0.51f, 0.46f, 0.37f, 0.55f, 0.52f, 0.56f,
++  0.55f, 0.50f, 0.01f, 0.19f, 0.70f, 0.88f, 0.75f, 0.75f, 0.74f, 0.73f, 0.18f,
++  0.71f, 0.35f, 0.60f, 0.58f, 0.36f, 0.60f, 0.38f, 0.50f, 0.02f, 0.01f, 0.98f,
++  0.48f, 0.49f, 0.54f, 0.50f, 0.49f, 0.53f, 0.50f, 0.49f, 0.49f, 0.51f, 0.51f,
++  0.51f, 0.47f, 0.50f, 0.53f, 0.51f, 0.46f, 0.51f, 0.51f, 0.48f, 0.51f, 0.52f,
++  0.50f, 0.52f, 0.51f, 0.50f, 0.49f, 0.53f, 0.52f, 0.50f, 0.46f, 0.47f, 0.48f,
++  0.52f, 0.50f, 0.49f, 0.51f, 0.49f, 0.49f, 0.50f, 0.50f, 0.50f, 0.50f, 0.51f,
++  0.50f, 0.49f, 0.49f, 0.55f, 0.49f, 0.51f, 0.48f, 0.55f, 0.49f, 0.48f, 0.50f,
++  0.51f, 0.50f, 0.51f, 0.50f, 0.51f, 0.53f, 0.49f, 0.54f, 0.50f, 0.48f, 0.49f,
++  0.46f, 0.51f, 0.51f, 0.52f, 0.49f, 0.51f, 0.49f, 0.51f, 0.50f, 0.49f, 0.50f,
++  0.50f, 0.47f, 0.49f, 0.52f, 0.49f, 0.51f, 0.49f, 0.48f, 0.52f, 0.48f, 0.49f,
++  0.47f, 0.50f, 0.48f, 0.50f, 0.49f, 0.51f, 0.51f, 0.51f, 0.49f,
+ };
+ 
+ 
+-FT8::FT8(const std::vector<double> &samples,
+-         double min_hz,
+-         double max_hz,
++FT8::FT8(const std::vector<float> &samples,
++         float min_hz,
++         float max_hz,
+          int start, int rate,
+-         int hints1[], int hints2[], double deadline,
+-         double final_deadline,
++         int hints1[], int hints2[], float deadline,
++         float final_deadline,
+          cb_t cb)
+   {
+     samples_ = samples;
+@@ -459,22 +459,22 @@
+ 
+ // strength of costas block of signal with tone 0 at bi0,
+ // and symbol zero at si0.
+-double
++float
+ FT8::one_coarse_strength(const ffts_t &bins, int bi0, int si0)
+ {
+   assert(si0 >= 0 && si0+72+8 <= (int) bins.size());
+   assert(bi0 >= 0 && bi0 + 8 <= (int) bins[0].size());
+ 
+-  double sig = 0.0;
+-  double noise = 0.0;
++  float sig = 0.0f;
++  float noise = 0.0f;
+ 
+   if(coarse_all >= 0){
+     for(int si = 0; si < 79; si++){
+-      double mx;
++      float mx;
+       int mxi = -1;
+-      double sum = 0;
++      float sum = 0;
+       for(int i = 0; i < 8; i++){
+-        double x = std::abs(bins[si0+si][bi0+i]);
++        float x = std::abs(bins[si0+si][bi0+i]);
+         sum += x;
+         if(mxi < 0 || x > mx){
+           mxi = i;
+@@ -482,15 +482,15 @@
+         }
+       }
+       if(si >= 0 && si < 7){
+-        double x = std::abs(bins[si0+si][bi0+costas[si-0]]);
++        float x = std::abs(bins[si0+si][bi0+costas[si-0]]);
+         sig += x;
+         noise += sum - x;
+       } else if(si >= 36 && si < 36+7){
+-        double x = std::abs(bins[si0+si][bi0+costas[si-36]]);
++        float x = std::abs(bins[si0+si][bi0+costas[si-36]]);
+         sig += x;
+         noise += sum - x;
+       } else if(si >= 72 && si < 72+7){
+-        double x = std::abs(bins[si0+si][bi0+costas[si-72]]);
++        float x = std::abs(bins[si0+si][bi0+costas[si-72]]);
+         sig += x;
+         noise += sum - x;
+       } else {
+@@ -503,7 +503,7 @@
+     // just costas symbols
+     for(int si = 0; si < 7; si++){
+       for(int bi = 0; bi < 8; bi++){
+-        double x = 0;
++        float x = 0;
+         x += std::abs(bins[si0+si][bi0+bi]);
+         x += std::abs(bins[si0+36+si][bi0+bi]);
+         x += std::abs(bins[si0+72+si][bi0+bi]);
+@@ -543,7 +543,7 @@
+ blocksize(int rate)
+ {
+   // FT8 symbol length is 1920 at 12000 samples/second.
+-  int xblock = 1920 / (12000.0 / rate);
++  int xblock = 1920 / (12000.0f / rate);
+   assert(xblock == (int) xblock);
+   int block = xblock;
+   return block;
+@@ -558,7 +558,7 @@
+ {
+   int block = blocksize(rate_);
+   int nbins = bins[0].size();
+-  double bin_hz = rate_ / (double) block;
++  float bin_hz = rate_ / (float) block;
+   int min_bin = min_hz_ / bin_hz;
+   int max_bin = max_hz_ / bin_hz;
+ 
+@@ -567,10 +567,10 @@
+   for(int bi = min_bin; bi < max_bin && bi+8 <= nbins; bi++){
+     std::vector<Strength> sv;
+     for(int si = si0; si < si1 && si + 79 < (int) bins.size(); si++){
+-      double s = one_coarse_strength(bins, bi, si);
++      float s = one_coarse_strength(bins, bi, si);
+       Strength st;
+       st.strength_ = s;
+-      st.hz_ = bi * 6.25;
++      st.hz_ = bi * 6.25f;
+       st.off_ = si * block;
+       sv.push_back(st);
+     }
+@@ -604,13 +604,13 @@
+ // so that it's not a brick-wall filter, so that it
+ // doesn't ring.
+ //
+-std::vector<std::complex<double>>
+-fbandpass(const std::vector<std::complex<double>> &bins0,
+-          double bin_hz,
+-          double low_outer,  // start of transition
+-          double low_inner,  // start of flat area
+-          double high_inner, // end of flat area
+-          double high_outer) // end of transition
++std::vector<std::complex<float>>
++fbandpass(const std::vector<std::complex<float>> &bins0,
++          float bin_hz,
++          float low_outer,  // start of transition
++          float low_inner,  // start of flat area
++          float high_inner, // end of flat area
++          float high_outer) // end of transition
+ {
+   // assert(low_outer >= 0);
+   assert(low_outer <= low_inner);
+@@ -619,12 +619,12 @@
+   // assert(high_outer <= bin_hz * bins0.size());
+ 
+   int nbins = bins0.size();
+-  std::vector<std::complex<double>> bins1(nbins);
++  std::vector<std::complex<float>> bins1(nbins);
+ 
+   for(int i = 0; i < nbins; i++){
+-    double ihz = i * bin_hz;
+-    // cos(x)+flat+cos(x) taper
+-    double factor;
++    float ihz = i * bin_hz;
++    // cosf(x)+flat+cosf(x) taper
++    float factor;
+     if(ihz <= low_outer || ihz >= high_outer){
+       factor = 0;
+     } else if(ihz >= low_outer && ihz < low_inner){
+@@ -632,10 +632,10 @@
+ #if 1
+       factor = (ihz - low_outer) / (low_inner-low_outer); // 0 .. 1
+ #else
+-      double theta = (ihz - low_outer) / (low_inner-low_outer); // 0 .. 1
++      float theta = (ihz - low_outer) / (low_inner-low_outer); // 0 .. 1
+       theta -= 1; // -1 .. 0
+-      theta *= 3.14159; // -pi .. 0
+-      factor = cos(theta); // -1 .. 1
++      theta *= 3.14159f; // -pi .. 0
++      factor = cosf(theta); // -1 .. 1
+       factor = (factor + 1) / 2; // 0 .. 1
+ #endif
+     } else if(ihz > high_inner && ihz <= high_outer){
+@@ -643,14 +643,14 @@
+ #if 1
+       factor =  (high_outer - ihz) / (high_outer-high_inner); // 1 .. 0
+ #else
+-      double theta =  (high_outer - ihz) / (high_outer-high_inner); // 1 .. 0
+-      theta = 1.0 - theta; // 0 .. 1
+-      theta *= 3.14159; // 0 .. pi
+-      factor = cos(theta); // 1 .. -1
++      float theta =  (high_outer - ihz) / (high_outer-high_inner); // 1 .. 0
++      theta = 1.0f - theta; // 0 .. 1
++      theta *= 3.14159f; // 0 .. pi
++      factor = cosf(theta); // 1 .. -1
+       factor = (factor + 1) / 2; // 1 .. 0
+ #endif
+     } else {
+-      factor = 1.0;
++      factor = 1.0f;
+     }
+     bins1[i] = bins0[i] * factor;
+   }
+@@ -664,26 +664,26 @@
+ // but first filter to that range.
+ // sets delta_hz to hz moved down.
+ //
+-std::vector<double>
+-FT8::reduce_rate(const std::vector<double> &a, double hz0, double hz1,
++std::vector<float>
++FT8::reduce_rate(const std::vector<float> &a, float hz0, float hz1,
+             int arate, int brate,
+-            double &delta_hz)
++            float &delta_hz)
+ {
+   assert(brate < arate);
+   assert(hz1 - hz0 <= brate / 2);
+ 
+   // the pass band is hz0..hz1
+   // stop bands are 0..hz00 and hz11..nyquist.
+-  double hz00, hz11;
++  float hz00, hz11;
+ 
+-  hz0 = std::max(0.0, hz0 - reduce_extra);
+-  hz1 = std::min(arate / 2.0, hz1 + reduce_extra);
++  hz0 = std::max(0.0f, hz0 - reduce_extra);
++  hz1 = std::min(arate / 2.0f, hz1 + reduce_extra);
+ 
+   if(reduce_shoulder > 0){
+     hz00 = hz0 - reduce_shoulder;
+     hz11 = hz1 + reduce_shoulder;
+   } else {
+-    double mid = (hz0 + hz1) / 2;
++    float mid = (hz0 + hz1) / 2;
+     hz00 = mid - (brate * reduce_factor);
+     hz00 = std::min(hz00, hz0);
+     hz11 = mid + (brate * reduce_factor);
+@@ -691,10 +691,10 @@
+   }
+ 
+   int alen = a.size();
+-  std::vector<std::complex<double>> bins1 = one_fft(a, 0, alen,
+-                                                    "reduce_rate1", 0);
++  std::vector<std::complex<float>> bins1 = one_fft(a, 0, alen,
++                                                   "reduce_rate1", 0);
+   int nbins1 = bins1.size();
+-  double bin_hz = arate / (double) alen;
++  float bin_hz = arate / (float) alen;
+ 
+   if(reduce_how == 2){
+     // band-pass filter the FFT output.
+@@ -717,12 +717,12 @@
+ 
+   // shift down.
+   int omid = ((hz0 + hz1) / 2) / bin_hz;
+-  int nmid = (brate / 4.0) / bin_hz;
++  int nmid = (brate / 4.0f) / bin_hz;
+ 
+   int delta = omid - nmid; // amount to move down
+   assert(delta < nbins1);
+-  int blen = round(alen * (brate / (double) arate));
+-  std::vector<std::complex<double>> bbins(blen / 2 + 1);
++  int blen = roundf(alen * (brate / (float) arate));
++  std::vector<std::complex<float>> bbins(blen / 2 + 1);
+   for(int i = 0; i < (int) bbins.size(); i++){
+     if(delta > 0){
+       if(i + delta < bins1.size()){
+@@ -736,7 +736,7 @@
+   }
+ 
+   // use ifft to reduce the rate.
+-  std::vector<double> vvv = one_ifft(bbins, "reduce_rate2");
++  std::vector<float> vvv = one_ifft(bbins, "reduce_rate2");
+ 
+   delta_hz = delta * bin_hz;
+ 
+@@ -793,7 +793,7 @@
+   int nice = -1;
+   for(int i = 0; nice_sizes[i]; i++){
+     int sz = nice_sizes[i];
+-    if(fabs(samples_.size() - sz) < 0.05 * samples_.size()){
++    if(fabsf(samples_.size() - sz) < 0.05f * samples_.size()){
+       nice = sz;
+       break;
+     }
+@@ -815,20 +815,20 @@
+     }
+   }
+ 
+-  if(do_reduce && nrate > 0 && nrate < rate_ * 0.75){
++  if(do_reduce && nrate > 0 && nrate < rate_ * 0.75f){
+     // filter and reduce the sample rate from rate_ to nrate.
+ 
+-    double t0 = now();
++    float t0 = now();
+     int osize = samples_.size();
+     
+-    double delta_hz; // how much it moved down
++    float delta_hz; // how much it moved down
+     samples_ = reduce_rate(samples_,
+-                           min_hz_-3.1-go_extra,
+-                           max_hz_+50-3.1+go_extra,
++                           min_hz_-3.1f-go_extra,
++                           max_hz_+50-3.1f+go_extra,
+                            rate_, nrate, delta_hz);
+ 
+-    double t1 = now();
+-    if(t1 - t0 > 0.15){
++    float t1 = now();
++    if(t1 - t0 > 0.15f){
+       fprintf(stderr, "reduce oops, size %d -> %d, rate %d -> %d, took %.2f\n",
+               osize,
+               (int) samples_.size(),
+@@ -851,9 +851,9 @@
+     assert(max_hz_ + 50 < nrate / 2);
+     assert(min_hz_ >= 0);
+ 
+-    double ratio = nrate / (double) rate_;
++    float ratio = nrate / (float) rate_;
+     rate_ = nrate;
+-    start_ = round(start_ * ratio);
++    start_ = roundf(start_ * ratio);
+   }
+ 
+   int block = blocksize(rate_);
+@@ -872,7 +872,7 @@
+     std::uniform_int_distribution<int> distribution(0, samples_.size()-1);
+     auto rnd = std::bind(distribution, generator);
+ 
+-    std::vector<double> v(need);
++    std::vector<float> v(need);
+     for(int i = 0; i < need; i++){
+       v[i] = samples_[rnd()];
+     }
+@@ -888,12 +888,12 @@
+   nsamples_ = samples_;
+ 
+   for(pass_ = 0; pass_ < npasses; pass_++){
+-    double total_remaining = deadline_ - now();
+-    double remaining = total_remaining / (npasses - pass_);
++    float total_remaining = deadline_ - now();
++    float remaining = total_remaining / (npasses - pass_);
+     if(pass_ == 0){
+       remaining *= pass0_frac;
+     }
+-    double deadline = now() + remaining;
++    float deadline = now() + remaining;
+     
+     int new_decodes = 0;
+     samples_ = nsamples_;
+@@ -907,13 +907,13 @@
+ 
+     // just do this once, re-use for every fractional fft_shift
+     // and down_v7_f() to 200 sps.
+-    std::vector<std::complex<double>> bins = one_fft(samples_, 0, samples_.size(),
+-                                                     "go1", 0);
++    std::vector<std::complex<float>> bins = one_fft(samples_, 0, samples_.size(),
++                                                    "go1", 0);
+ 
+     for(int hz_frac_i = 0; hz_frac_i < coarse_hz_n; hz_frac_i++){
+       // shift down by hz_frac
+-      double hz_frac = hz_frac_i * (6.25 / coarse_hz_n);
+-      std::vector<double> samples1;
++      float hz_frac = hz_frac_i * (6.25f / coarse_hz_n);
++      std::vector<float> samples1;
+       if(hz_frac_i == 0){
+         samples1 = samples_;
+       } else {
+@@ -946,7 +946,7 @@
+       already[i] = 0;
+     
+     for(int ii = 0; ii < (int) order.size(); ii++){
+-      double tt = now();
++      float tt = now();
+       if(ii > 0 &&
+          tt > deadline &&
+          (tt > deadline_ || new_decodes >= pass_threshold) &&
+@@ -954,8 +954,8 @@
+         break;
+       }
+ 
+-      double hz = order[ii].hz_;
+-      if(already[(int)round(hz / already_hz)])
++      float hz = order[ii].hz_;
++      if(already[(int)roundf(hz / already_hz)])
+         continue;
+       int off = order[ii].off_;
+       int ret = one(bins, samples_.size(), hz, off);
+@@ -963,7 +963,7 @@
+         if(ret == 2){
+           new_decodes++;
+         }
+-        already[(int)round(hz / already_hz)] = 1;
++        already[(int)roundf(hz / already_hz)] = 1;
+       }
+     }
+   }
+@@ -973,22 +973,22 @@
+ // what's the strength of the Costas sync blocks of
+ // the signal starting at hz and off?
+ //
+-double
+-FT8::one_strength(const std::vector<double> &samples200, double hz, int off)
++float
++FT8::one_strength(const std::vector<float> &samples200, float hz, int off)
+ {
+-  int bin0 = round(hz / 6.25);
++  int bin0 = roundf(hz / 6.25f);
+ 
+   int starts[] = { 0, 36, 72 };
+ 
+-  double sig = 0;
+-  double noise = 0;
++  float sig = 0;
++  float noise = 0;
+ 
+   for(int which = 0; which < 3; which++){
+     int start = starts[which];
+     for(int si = 0; si < 7; si++){
+       auto fft = one_fft(samples200, off+(si+start)*32, 32, "one_strength", plan32_);
+       for(int bi = 0; bi < 8; bi++){
+-        double x = std::abs(fft[bin0+bi]);
++        float x = std::abs(fft[bin0+bi]);
+         if(bi == costas[si]){
+           sig += x;
+         } else {
+@@ -1023,34 +1023,34 @@
+ // offset and frequency at which to subtract a
+ // decoded signal.
+ //
+-double
+-FT8::one_strength_known(const std::vector<double> &samples,
++float
++FT8::one_strength_known(const std::vector<float> &samples,
+                         int rate,
+                         const std::vector<int> &syms,
+-                        double hz, int off)
++                        float hz, int off)
+ {
+   int block = blocksize(rate);
+   assert(syms.size() == 79);
+   
+-  int bin0 = round(hz / 6.25);
++  int bin0 = roundf(hz / 6.25f);
+ 
+-  double sig = 0;
+-  double noise = 0;
++  float sig = 0;
++  float noise = 0;
+ 
+-  double sum7 = 0;
+-  std::complex<double> prev = 0;
++  float sum7 = 0;
++  std::complex<float> prev = 0;
+   
+   for(int si = 0; si < 79; si += known_sparse){
+     auto fft = one_fft(samples, off+si*block, block, "one_strength_known", 0);
+     if(known_strength_how == 7){
+-      std::complex<double> c = fft[bin0+syms[si]];
++      std::complex<float> c = fft[bin0+syms[si]];
+       if(si > 0){
+         sum7 += std::abs(c - prev);
+       }
+       prev = c;
+     } else {
+       for(int bi = 0; bi < 8; bi++){
+-        double x = std::abs(fft[bin0+bi]);
++        float x = std::abs(fft[bin0+bi]);
+         if(bi == syms[si]){
+           sig += x;
+         } else {
+@@ -1082,11 +1082,11 @@
+ }
+ 
+ int
+-FT8::search_time_fine(const std::vector<double> &samples200,
++FT8::search_time_fine(const std::vector<float> &samples200,
+                       int off0, int offN,
+-                      double hz,
++                      float hz,
+                       int gran,
+-                      double &str)
++                      float &str)
+ {
+   if(off0 < 0)
+     off0 = 0;
+@@ -1103,13 +1103,13 @@
+     // don't provoke random-length FFTs.
+     return -1;
+   }
+-  std::vector<double> downsamples200 = shift200(samples200, off0, len, hz);
++  std::vector<float> downsamples200 = shift200(samples200, off0, len, hz);
+ 
+   int best_off = -1;
+-  double best_sum = 0.0;
++  float best_sum = 0.0f;
+ 
+   for(int g = 0; g <= (offN-off0) && g + 79*32 <= len; g += gran){
+-    double sum = one_strength(downsamples200, 25, g);
++    float sum = one_strength(downsamples200, 25, g);
+     if(sum > best_sum || best_off == -1){
+       best_off = g;
+       best_sum = sum;
+@@ -1122,30 +1122,30 @@
+ }
+ 
+ int
+-FT8::search_time_fine_known(const std::vector<std::complex<double>> &bins,
++FT8::search_time_fine_known(const std::vector<std::complex<float>> &bins,
+                             int rate,
+                             const std::vector<int> &syms,
+                             int off0, int offN,
+-                            double hz,
++                            float hz,
+                             int gran,
+-                            double &str)
++                            float &str)
+ {
+   if(off0 < 0)
+     off0 = 0;
+ 
+   // nearest FFT bin center.
+-  double hz0 = round(hz / 6.25) * 6.25;
++  float hz0 = roundf(hz / 6.25f) * 6.25f;
+ 
+   // move hz to hz0, so it is centered in a symbol-sized bin.
+-  std::vector<double> downsamples = fft_shift_f(bins, rate, hz - hz0);
++  std::vector<float> downsamples = fft_shift_f(bins, rate, hz - hz0);
+ 
+   int best_off = -1;
+   int block = blocksize(rate);
+-  double best_sum = 0.0;
++  float best_sum = 0.0f;
+ 
+   for(int g = off0 ; g <= offN; g += gran){
+     if(g >= 0 && g + 79*block <= (int) downsamples.size()){
+-      double sum = one_strength_known(downsamples, rate, syms, hz0, g);
++      float sum = one_strength_known(downsamples, rate, syms, hz0, g);
+       if(sum > best_sum || best_off == -1){
+         best_off = g;
+         best_sum = sum;
+@@ -1166,21 +1166,21 @@
+ // off0 +/- off_win in off_inc incremenents.
+ //
+ std::vector<Strength>
+-FT8::search_both(const std::vector<double> &samples200,
+-                 double hz0, int hz_n, double hz_win,
++FT8::search_both(const std::vector<float> &samples200,
++                 float hz0, int hz_n, float hz_win,
+                  int off0, int off_n, int off_win)
+ {
+-  assert(hz0 >= 25 - 6.25/2 && hz0 <= 25 + 6.25/2);
++  assert(hz0 >= 25 - 6.25f/2 && hz0 <= 25 + 6.25f/2);
+ 
+   std::vector<Strength> strengths;
+   
+-  double hz_inc = 2 * hz_win / hz_n;
+-  int off_inc = round(2 * off_win / (double) off_n);
++  float hz_inc = 2 * hz_win / hz_n;
++  int off_inc = roundf(2 * off_win / (float) off_n);
+   if(off_inc < 1)
+     off_inc = 1;
+ 
+-  for(double hz = hz0 - hz_win; hz <= hz0 + hz_win + 0.01; hz += hz_inc){
+-    double str = 0;
++  for(float hz = hz0 - hz_win; hz <= hz0 + hz_win + 0.01f; hz += hz_inc){
++    float str = 0;
+     int off = search_time_fine(samples200, off0 - off_win, off0 + off_win, hz,
+                                off_inc, str);
+     if(off >= 0){
+@@ -1196,34 +1196,34 @@
+ }
+ 
+ void
+-FT8::search_both_known(const std::vector<double> &samples,
++FT8::search_both_known(const std::vector<float> &samples,
+                        int rate,
+                        const std::vector<int> &syms,
+-                       double hz0,
+-                       double off_secs0, // seconds
+-                       double &hz_out, double &off_out)
++                       float hz0,
++                       float off_secs0, // seconds
++                       float &hz_out, float &off_out)
+ {
+   assert(hz0 >= 0 && hz0+50 < rate / 2);
+ 
+-  int off0 = round(off_secs0 * (double) rate);
++  int off0 = roundf(off_secs0 * (float) rate);
+ 
+   int off_win = third_off_win * blocksize(rate_);
+   if(off_win < 1)
+     off_win = 1;
+-  int off_inc = trunc((2.0 * off_win) / (third_off_n - 1.0));
++  int off_inc = trunc((2.0f * off_win) / (third_off_n - 1.0f));
+   if(off_inc < 1)
+     off_inc = 1;
+   
+   int got_best = 0;
+-  double best_hz = 0;
++  float best_hz = 0;
+   int best_off = 0;
+-  double best_strength = 0;
++  float best_strength = 0;
+ 
+-  std::vector<std::complex<double>> bins = one_fft(samples, 0, samples.size(), "stfk", 0);
++  std::vector<std::complex<float>> bins = one_fft(samples, 0, samples.size(), "stfk", 0);
+ 
+-  double hz_start, hz_inc, hz_end;
++  float hz_start, hz_inc, hz_end;
+   if(third_hz_n > 1){
+-    hz_inc = (2.0 * third_hz_win) / (third_hz_n - 1.0);
++    hz_inc = (2.0f * third_hz_win) / (third_hz_n - 1.0f);
+     hz_start = hz0 - third_hz_win;
+     hz_end = hz0 + third_hz_win;
+   } else {
+@@ -1232,8 +1232,8 @@
+     hz_end = hz0;
+   }
+ 
+-  for(double hz = hz_start; hz <= hz_end + 0.0001; hz += hz_inc){
+-    double strength = 0;
++  for(float hz = hz_start; hz <= hz_end + 0.0001f; hz += hz_inc){
++    float strength = 0;
+     int off = search_time_fine_known(bins, rate, syms,
+                                      off0 - off_win, off0 + off_win, hz,
+                                      off_inc, strength);
+@@ -1247,7 +1247,7 @@
+ 
+   if(got_best){
+     hz_out = best_hz;
+-    off_out = best_off / (double) rate;
++    off_out = best_off / (float) rate;
+   }
+ }
+ 
+@@ -1257,11 +1257,11 @@
+ // surprisingly fast at 200 samples/second.
+ // shifts *down* by hz.
+ //
+-std::vector<double>
+-FT8::fft_shift(const std::vector<double> &samples, int off, int len,
+-               int rate, double hz)
++std::vector<float>
++FT8::fft_shift(const std::vector<float> &samples, int off, int len,
++               int rate, float hz)
+ {
+-  std::vector<std::complex<double>> bins;
++  std::vector<std::complex<float>> bins;
+ 
+   // horrible hack to avoid repeated FFTs on the same input.
+   hack_mu_.lock();
+@@ -1287,15 +1287,15 @@
+ //
+ // shift down by hz.
+ //
+-std::vector<double>
+-FT8::fft_shift_f(const std::vector<std::complex<double>> &bins, int rate, double hz)
++std::vector<float>
++FT8::fft_shift_f(const std::vector<std::complex<float>> &bins, int rate, float hz)
+ {
+   int nbins = bins.size();
+   int len = (nbins - 1) * 2;
+ 
+-  double bin_hz = rate / (double) len;
+-  int down = round(hz / bin_hz);
+-  std::vector<std::complex<double>> bins1(nbins);
++  float bin_hz = rate / (float) len;
++  int down = roundf(hz / bin_hz);
++  std::vector<std::complex<float>> bins1(nbins);
+   for(int i = 0; i < nbins; i++){
+     int j = i + down;
+     if(j >= 0 && j < nbins){
+@@ -1304,26 +1304,26 @@
+       bins1[i] = 0;
+     }
+   }
+-  std::vector<double> out = one_ifft(bins1, "fft_shift");
++  std::vector<float> out = one_ifft(bins1, "fft_shift");
+   return out;
+ }
+ 
+ // shift the frequency by a fraction of 6.25,
+ // to center hz on bin 4 (25 hz).
+-std::vector<double>
+-FT8::shift200(const std::vector<double> &samples200, int off, int len, double hz)
++std::vector<float>
++FT8::shift200(const std::vector<float> &samples200, int off, int len, float hz)
+ {
+-  if(std::abs(hz - 25) < 0.001 && off == 0 && len == (int) samples200.size()){
++  if(std::abs(hz - 25) < 0.001f && off == 0 && len == (int) samples200.size()){
+     return samples200;
+   } else {
+-    return fft_shift(samples200, off, len, 200, hz - 25.0);
++    return fft_shift(samples200, off, len, 200, hz - 25.0f);
+   }
+-  // return hilbert_shift(samples200, hz - 25.0, hz - 25.0, 200);
++  // return hilbert_shift(samples200, hz - 25.0f, hz - 25.0f, 200);
+ }
+ 
+ // returns a mini-FFT of 79 8-tone symbols.
+ ffts_t
+-FT8::extract(const std::vector<double> &samples200, double hz, int off)
++FT8::extract(const std::vector<float> &samples200, float hz, int off)
+ {
+ 
+   ffts_t bins3 = ffts(samples200, off, 32, "extract");
+@@ -1350,8 +1350,8 @@
+ // normalize levels by windowed median.
+ // this helps, but why?
+ //
+-std::vector< std::vector<double> >
+-convert_to_snr(const std::vector< std::vector<double> > &m79)
++std::vector< std::vector<float> >
++convert_to_snr(const std::vector< std::vector<float> > &m79)
+ {
+   if(snr_how < 0 || snr_win < 0)
+     return m79;
+@@ -1359,12 +1359,12 @@
+   //
+   // for each symbol time, what's its "noise" level?
+   //
+-  std::vector<double> mm(79);
++  std::vector<float> mm(79);
+   for(int si = 0; si < 79; si++){
+-    std::vector<double> v(8);
+-    double sum = 0.0;
++    std::vector<float> v(8);
++    float sum = 0.0f;
+     for(int bi = 0; bi < 8; bi++){
+-      double x = m79[si][bi];
++      float x = m79[si][bi];
+       v[bi] = x;
+       sum += x;
+     }
+@@ -1385,22 +1385,22 @@
+     } else if(snr_how == 5){
+       mm[si] = v[6]; // second-strongest tone
+     } else {
+-      mm[si] = 1.0;
++      mm[si] = 1.0f;
+     }
+   }
+ 
+   // we're going to take a windowed average.
+-  std::vector<double> winwin;
++  std::vector<float> winwin;
+   if(snr_win > 0){
+     winwin = blackman(2*snr_win+1);
+   } else {
+-    winwin.push_back(1.0);
++    winwin.push_back(1.0f);
+   }
+ 
+-  std::vector<std::vector<double>> n79(79);
++  std::vector<std::vector<float>> n79(79);
+     
+   for(int si = 0; si < 79; si++){
+-    double sum = 0;
++    float sum = 0;
+     for(int dd = si - snr_win; dd <= si + snr_win; dd++){
+       int wi = dd - (si - snr_win);
+       if(dd >= 0 && dd < 79){
+@@ -1424,8 +1424,8 @@
+ // normalize levels by windowed median.
+ // this helps, but why?
+ //
+-std::vector< std::vector<std::complex<double>> >
+-c_convert_to_snr(const std::vector< std::vector<std::complex<double>> > &m79)
++std::vector< std::vector<std::complex<float>> >
++c_convert_to_snr(const std::vector< std::vector<std::complex<float>> > &m79)
+ {
+   if(snr_how < 0 || snr_win < 0)
+     return m79;
+@@ -1433,12 +1433,12 @@
+   //
+   // for each symbol time, what's its "noise" level?
+   //
+-  std::vector<double> mm(79);
++  std::vector<float> mm(79);
+   for(int si = 0; si < 79; si++){
+-    std::vector<double> v(8);
+-    double sum = 0.0;
++    std::vector<float> v(8);
++    float sum = 0.0f;
+     for(int bi = 0; bi < 8; bi++){
+-      double x = std::abs(m79[si][bi]);
++      float x = std::abs(m79[si][bi]);
+       v[bi] = x;
+       sum += x;
+     }
+@@ -1459,22 +1459,22 @@
+     } else if(snr_how == 5){
+       mm[si] = v[6]; // second-strongest tone
+     } else {
+-      mm[si] = 1.0;
++      mm[si] = 1.0f;
+     }
+   }
+ 
+   // we're going to take a windowed average.
+-  std::vector<double> winwin;
++  std::vector<float> winwin;
+   if(snr_win > 0){
+     winwin = blackman(2*snr_win+1);
+   } else {
+-    winwin.push_back(1.0);
++    winwin.push_back(1.0f);
+   }
+ 
+-  std::vector<std::vector<std::complex<double>>> n79(79);
++  std::vector<std::vector<std::complex<float>>> n79(79);
+     
+   for(int si = 0; si < 79; si++){
+-    double sum = 0;
++    float sum = 0;
+     for(int dd = si - snr_win; dd <= si + snr_win; dd++){
+       int wi = dd - (si - snr_win);
+       if(dd >= 0 && dd < 79){
+@@ -1501,7 +1501,7 @@
+ // distribution of noise.
+ //
+ void
+-make_stats(const std::vector<std::vector<double>> &m79,
++make_stats(const std::vector<std::vector<float>> &m79,
+            Stats &bests,
+            Stats &all)
+ {
+@@ -1513,16 +1513,16 @@
+       else if(si >= 36) ci = si - 36;
+       else ci = si;
+       for(int bi = 0; bi < 8; bi++){
+-        double x = m79[si][bi];
++        float x = m79[si][bi];
+         all.add(x);
+         if(bi == costas[ci]){
+           bests.add(x);
+         }
+       }
+     } else {
+-      double mx = 0;
++      float mx = 0;
+       for(int bi = 0; bi < 8; bi++){
+-        double x = m79[si][bi];
++        float x = m79[si][bi];
+         if(x > mx)
+           mx = x;
+         all.add(x);
+@@ -1543,18 +1543,18 @@
+ // number of cycles and thus preserves phase from one symbol to the
+ // next.
+ //
+-std::vector<std::vector<double>>
++std::vector<std::vector<float>>
+ soft_c2m(const ffts_t &c79)
+ {
+-  std::vector< std::vector<double> > m79(79);
+-  std::vector<double> raw_phases(79); // of strongest tone in each symbol time
++  std::vector< std::vector<float> > m79(79);
++  std::vector<float> raw_phases(79); // of strongest tone in each symbol time
+   for(int si = 0; si < 79; si++){
+     m79[si].resize(8);
+     int mxi = -1;
+-    double mx;
+-    double mx_phase;
++    float mx;
++    float mx_phase;
+     for(int bi = 0; bi < 8; bi++){
+-      double x = std::abs(c79[si][bi]);
++      float x = std::abs(c79[si][bi]);
+       m79[si][bi] = x;
+       if(mxi < 0 || x > mx){
+         mxi = bi;
+@@ -1569,14 +1569,14 @@
+     return m79;
+ 
+   // phase around each symbol.
+-  std::vector<double> phases(79);
++  std::vector<float> phases(79);
+ 
+   // for each symbol time, median of nearby phases
+   for(int si = 0; si < 79; si++){
+-    std::vector<double> v;
++    std::vector<float> v;
+     for(int si1 = si - soft_phase_win; si1 <= si + soft_phase_win; si1++){
+       if(si1 >= 0 && si1 < 79){
+-        double x = raw_phases[si1];
++        float x = raw_phases[si1];
+         v.push_back(x);
+       }
+     }
+@@ -1585,15 +1585,15 @@
+     // phases. like median but avoids -pi..pi wrap-around.
+     int n = v.size();
+     int best = -1;
+-    double best_score = 0;
++    float best_score = 0;
+     for(int i = 0; i < n; i++){
+-      double score = 0;
++      float score = 0;
+       for(int j = 0; j < n; j++){
+         if(i == j)
+           continue;
+-        double d = fabs(v[i] - v[j]);
+-        if(d > M_PI)
+-          d = 2*M_PI - d;
++        float d = fabsf(v[i] - v[j]);
++        if(d > M_PIf)
++          d = 2*M_PIf - d;
+         score += d;
+       }
+       if(best == -1 || score < best_score){
+@@ -1607,12 +1607,12 @@
+   // project each tone against the median phase around that symbol time.
+   for(int si = 0; si < 79; si++){
+     for(int bi = 0; bi < 8; bi++){
+-      double mag = std::abs(c79[si][bi]);
+-      double angle = std::arg(c79[si][bi]);
+-      double d = angle - phases[si];
+-      double factor = 0.1;
+-      if(d < M_PI/2 && d > -M_PI/2){
+-        factor = cos(d);
++      float mag = std::abs(c79[si][bi]);
++      float angle = std::arg(c79[si][bi]);
++      float d = angle - phases[si];
++      float factor = 0.1f;
++      if(d < M_PIf/2 && d > -M_PIf/2){
++        factor = cosf(d);
+       }
+       m79[si][bi] = factor * mag;
+     }
+@@ -1626,14 +1626,14 @@
+ // based on strengths of strongest tones that would
+ // give it those values. for soft LDPC decoding.
+ //
+-double
+-bayes(double best_zero, double best_one, int lli,
++float
++bayes(float best_zero, float best_one, int lli,
+       Stats &bests, Stats &all)
+ {
+-  double pzero = 0.5;
+-  double pone = 0.5;
++  float pzero = 0.5f;
++  float pone = 0.5f;
+   if(use_apriori){
+-    pzero = 1.0 - apriori174[lli];
++    pzero = 1.0f - apriori174[lli];
+     pone = apriori174[lli];
+   }
+   
+@@ -1650,18 +1650,18 @@
+   //
+ 
+   // zero
+-  double a = pzero *
++  float a = pzero *
+     bests.problt(best_zero) *
+-    (1.0 - all.problt(best_one));
++    (1.0f - all.problt(best_one));
+   
+   // one
+-  double b = pone *
++  float b = pone *
+     bests.problt(best_one) *
+-    (1.0 - all.problt(best_zero));
++    (1.0f - all.problt(best_zero));
+   
+-  double p;
++  float p;
+   if(a + b == 0){
+-    p = 0.5;
++    p = 0.5f;
+   } else {
+     p = a / (a + b);
+   }
+@@ -1674,17 +1674,17 @@
+ // based on strengths of strongest tones that would
+ // give it those values. for soft LDPC decoding.
+ //
+-double
+-bayes1(double psig0,   // P(best tone for zero looks like signal)
+-       double pnoise0, // P(best tone for zero looks like noise)
+-       double psig1,   // P(best tone for one looks like signal)
+-       double pnoise1, // P(best tone for one looks like noise)
++float
++bayes1(float psig0,   // P(best tone for zero looks like signal)
++       float pnoise0, // P(best tone for zero looks like noise)
++       float psig1,   // P(best tone for one looks like signal)
++       float pnoise1, // P(best tone for one looks like noise)
+        int lli)
+ {
+-  double pzero = 0.5;
+-  double pone = 0.5;
++  float pzero = 0.5f;
++  float pone = 0.5f;
+   if(use_apriori){
+-    pzero = 1.0 - apriori174[lli];
++    pzero = 1.0f - apriori174[lli];
+     pone = apriori174[lli];
+   }
+   
+@@ -1701,14 +1701,14 @@
+   //
+ 
+   // zero
+-  double a = pzero * psig0 * pnoise1;
++  float a = pzero * psig0 * pnoise1;
+   
+   // one
+-  double b = pone * psig1 * pnoise0;
++  float b = pone * psig1 * pnoise0;
+   
+-  double p;
++  float p;
+   if(a + b == 0){
+-    p = 0.5;
++    p = 0.5f;
+   } else {
+     p = a / (a + b);
+   }
+@@ -1719,13 +1719,13 @@
+ //
+ // convert a probability to a log-likelihood.
+ //
+-double
+-p2ll(double p)
++float
++p2ll(float p)
+ {
+-  double maxlog = 4.97;
++  float maxlog = 4.97f;
+ 
+-  double ll;
+-  if(1 - p == 0.0){
++  float ll;
++  if(1 - p == 0.0f){
+     ll = maxlog;
+   } else {
+     ll = log(p / (1 - p));
+@@ -1743,14 +1743,14 @@
+ // convert a log-likelihood to a probability
+ // p = e**x / (1 + e**x)
+ //
+-double
+-ll2p(double ll)
++float
++ll2p(float ll)
+ {
+-  double ee = expl(ll);
++  float ee = expf(ll);
+   if(1 + ee == 0){
+     return 1;
+   }
+-  double p = ee / (1 + ee);
++  float p = ee / (1 + ee);
+   if(p < 0)
+     p = 0;
+   if(p > 1)
+@@ -1762,9 +1762,9 @@
+ // c79 is 79x8 complex tones.
+ //
+ void
+-soft_decode(const ffts_t &c79, double ll174[])
++soft_decode(const ffts_t &c79, float ll174[])
+ {
+-  std::vector< std::vector<double> > m79(79);
++  std::vector< std::vector<float> > m79(79);
+ 
+   // m79 = absolute values of c79.
+   m79 = soft_c2m(c79);
+@@ -1814,9 +1814,9 @@
+ 
+       // strongest tone that would make this bit be zero.
+       int got_best_zero = 0;
+-      double best_zero = 0;
++      float best_zero = 0;
+       for(int i = 0; i < 4; i++){
+-        double x = m79[i79][zeroi[i]];
++        float x = m79[i79][zeroi[i]];
+         if(got_best_zero == 0 || x > best_zero){
+           got_best_zero = 1;
+           best_zero = x;
+@@ -1825,17 +1825,17 @@
+ 
+       // strongest tone that would make this bit be one.
+       int got_best_one = 0;
+-      double best_one = 0;
++      float best_one = 0;
+       for(int i = 0; i < 4; i++){
+-        double x = m79[i79][onei[i]];
++        float x = m79[i79][onei[i]];
+         if(got_best_one == 0 || x > best_one){
+           got_best_one = 1;
+           best_one = x;
+         }
+       }
+ 
+-      double p0 = bayes(best_zero, best_one, lli, bests, all);
+-      double ll = p2ll(p0);
++      float p0 = bayes(best_zero, best_one, lli, bests, all);
++      float ll = p2ll(p0);
+       
+       ll174[lli++] = ll;
+     }
+@@ -1852,14 +1852,14 @@
+ //
+ void
+ c_soft_decode_first(const ffts_t &c79x,
+-                    std::vector<std::vector<double>> &psig79,
+-                    std::vector<std::vector<double>> &pnoise79)
++                    std::vector<std::vector<float>> &psig79,
++                    std::vector<std::vector<float>> &pnoise79)
+ {
+   ffts_t c79 = c_convert_to_snr(c79x);
+ 
+-  std::complex<double> maxes[79];
++  std::complex<float> maxes[79];
+   for(int i = 0; i < 79; i++){
+-    std::complex<double> m;
++    std::complex<float> m;
+     if(i < 7){
+       // Costas.
+       m = c79[i][costas[i]];
+@@ -1881,13 +1881,13 @@
+     maxes[i] = m;
+   }
+ 
+-  std::vector<std::vector<double>> m79(79);
++  std::vector<std::vector<float>> m79(79);
+   for(int i = 0; i < 79; i++){
+     m79[i].resize(8);
+     for(int j = 0; j < 8; j++){
+-      std::complex<double> c = c79[i][j];
++      std::complex<float> c = c79[i][j];
+       int n = 0;
+-      double sum = 0;
++      float sum = 0;
+       for(int k = i - c_soft_win; k <= i + c_soft_win; k++){
+         if(k < 0 || k >= 79)
+           continue;
+@@ -1899,8 +1899,8 @@
+           // so set m79[i][j] to the distance from the
+           // phase/magnitude predicted by surrounding
+           // genuine-looking tones.
+-          std::complex<double> c1 = maxes[k];
+-          std::complex<double> d = c1 - c;
++          std::complex<float> c1 = maxes[k];
++          std::complex<float> d = c1 - c;
+           sum += std::abs(d);
+         }
+         n += 1;
+@@ -1923,7 +1923,7 @@
+     pnoise79[i79].resize(8);
+     for(int j = 0; j < 8; j++){
+       psig79[i79][j] = bests.problt(m79[i79][j]);
+-      pnoise79[i79][j] = 1.0 - all.problt(m79[i79][j]);
++      pnoise79[i79][j] = 1.0f - all.problt(m79[i79][j]);
+     }
+   }
+ }
+@@ -1935,9 +1935,9 @@
+ // psig/noise79 include Costas blocks.
+ //
+ void
+-c_soft_decode_second(const std::vector<std::vector<double>> &psig79,
+-                     const std::vector<std::vector<double>> &pnoise79,
+-                     double ll174[])
++c_soft_decode_second(const std::vector<std::vector<float>> &psig79,
++                     const std::vector<std::vector<float>> &pnoise79,
++                     float ll174[])
+ {
+   int lli = 0;
+   for(int i79 = 0; i79 < 79; i79++){
+@@ -1976,7 +1976,7 @@
+       // index of strongest tone that would make this bit be zero.
+       int best_zero = -1;
+       for(int i = 0; i < 4; i++){
+-        double x = psig79[i79][zeroi[i]];
++        float x = psig79[i79][zeroi[i]];
+         if(best_zero < 0 || x > psig79[i79][best_zero]){
+           best_zero = zeroi[i];
+         }
+@@ -1985,19 +1985,19 @@
+       // index of strongest tone that would make this bit be one.
+       int best_one = -1;
+       for(int i = 0; i < 4; i++){
+-        double x = psig79[i79][onei[i]];
++        float x = psig79[i79][onei[i]];
+         if(best_one < 0 || x > psig79[i79][best_one]){
+           best_one = onei[i];
+         }
+       }
+ 
+-      // double p0 = bayes(best_zero, best_one, lli, bests, all);
+-      double p0 = bayes1(psig79[i79][best_zero],
+-                         pnoise79[i79][best_zero],
+-                         psig79[i79][best_one],
+-                         pnoise79[i79][best_one],
+-                         lli);
+-      double ll = p2ll(p0);
++      // float p0 = bayes(best_zero, best_one, lli, bests, all);
++      float p0 = bayes1(psig79[i79][best_zero],
++                        pnoise79[i79][best_zero],
++                        psig79[i79][best_one],
++                        pnoise79[i79][best_one],
++                        lli);
++      float ll = p2ll(p0);
+       
+       ll174[lli++] = ll;
+     }
+@@ -2014,13 +2014,13 @@
+ // each returned element is < 0 for 1, > 0 for zero,
+ // scaled by str.
+ //
+-std::vector<double>
+-extract_bits(const std::vector<int> &syms, const std::vector<double> str)
++std::vector<float>
++extract_bits(const std::vector<int> &syms, const std::vector<float> str)
+ {
+   assert(syms.size() == 79);
+   assert(str.size() == 79);
+ 
+-  std::vector<double> bits;
++  std::vector<float> bits;
+   for(int si = 0; si < 79; si++){
+     if(si < 7 || (si >= 36 && si < 36+7) || si >= 72){
+       // costas -- skip
+@@ -2039,13 +2039,13 @@
+ // correlations for each possible pair and using the max.
+ void
+ soft_decode_pairs(const ffts_t &m79x,
+-                  double ll174[])
++                  float ll174[])
+ {
+   ffts_t m79 = c_convert_to_snr(m79x);
+                        
+   struct BitInfo {
+-    double zero; // strongest correlation that makes it zero
+-    double one;  // and one
++    float zero; // strongest correlation that makes it zero
++    float one;  // and one
+   };
+   std::vector<BitInfo> bitinfo(79*3);
+   for(int i = 0; i < (int) bitinfo.size(); i++){
+@@ -2057,15 +2057,15 @@
+   Stats bests(problt_how_sig);
+ 
+   for(int si = 0; si < 79; si += 2){
+-    double mx = 0;
+-    double corrs[8*8];
++    float mx = 0;
++    float corrs[8*8];
+     for(int s1 = 0; s1 < 8; s1++){
+       for(int s2 = 0; s2 < 8; s2++){
+         // sum up the correlations.
+-        std::complex<double> csum = m79[si][s1];
++        std::complex<float> csum = m79[si][s1];
+         if(si+1 < 79)
+           csum += m79[si+1][s2];
+-        double x = std::abs(csum);
++        float x = std::abs(csum);
+           
+         corrs[s1*8+s2] = x;
+         if(x > mx)
+@@ -2129,12 +2129,12 @@
+       continue;
+     }
+     for(int i = 0; i < 3; i++){
+-      double best_zero = bitinfo[si*3+i].zero;
+-      double best_one = bitinfo[si*3+i].one;
+-      // ll174[lli++] = best_zero > best_one ? 4.99 : -4.99;
++      float best_zero = bitinfo[si*3+i].zero;
++      float best_one = bitinfo[si*3+i].one;
++      // ll174[lli++] = best_zero > best_one ? 4.99f : -4.99f;
+ 
+-      double p0 = bayes(best_zero, best_one, lli, bests, all);
+-      double ll = p2ll(p0);
++      float p0 = bayes(best_zero, best_one, lli, bests, all);
++      float ll = p2ll(p0);
+       
+       ll174[lli++] = ll;
+     }
+@@ -2144,13 +2144,13 @@
+ 
+ void
+ soft_decode_triples(const ffts_t &m79x,
+-                    double ll174[])
++                    float ll174[])
+ {
+   ffts_t m79 = c_convert_to_snr(m79x);
+   
+   struct BitInfo {
+-    double zero; // strongest correlation that makes it zero
+-    double one;  // and one
++    float zero; // strongest correlation that makes it zero
++    float one;  // and one
+   };
+   std::vector<BitInfo> bitinfo(79*3);
+   for(int i = 0; i < (int) bitinfo.size(); i++){
+@@ -2162,17 +2162,17 @@
+   Stats bests(problt_how_sig);
+ 
+   for(int si = 0; si < 79; si += 3){
+-    double mx = 0;
+-    double corrs[8*8*8];
++    float mx = 0;
++    float corrs[8*8*8];
+     for(int s1 = 0; s1 < 8; s1++){
+       for(int s2 = 0; s2 < 8; s2++){
+         for(int s3 = 0; s3 < 8; s3++){
+-          std::complex<double> csum = m79[si][s1];
++          std::complex<float> csum = m79[si][s1];
+           if(si+1 < 79)
+             csum += m79[si+1][s2];
+           if(si+2 < 79)
+             csum += m79[si+2][s3];
+-          double x = std::abs(csum);
++          float x = std::abs(csum);
+ 
+           corrs[s1*64+s2*8+s3] = x;
+           if(x > mx)
+@@ -2255,12 +2255,12 @@
+       continue;
+     }
+     for(int i = 0; i < 3; i++){
+-      double best_zero = bitinfo[si*3+i].zero;
+-      double best_one = bitinfo[si*3+i].one;
+-      // ll174[lli++] = best_zero > best_one ? 4.99 : -4.99;
++      float best_zero = bitinfo[si*3+i].zero;
++      float best_one = bitinfo[si*3+i].one;
++      // ll174[lli++] = best_zero > best_one ? 4.99f : -4.99f;
+ 
+-      double p0 = bayes(best_zero, best_one, lli, bests, all);
+-      double ll = p2ll(p0);
++      float p0 = bayes(best_zero, best_one, lli, bests, all);
++      float ll = p2ll(p0);
+       
+       ll174[lli++] = ll;
+     }
+@@ -2273,15 +2273,15 @@
+ // on success, puts corrected 174 bits into a174[].
+ //
+ int
+-decode(const double ll174[], int a174[], int use_osd, std::string &comment)
++decode(const float ll174[], int a174[], int use_osd, std::string &comment)
+ {
+-  void ldpc_decode(double llcodeword[], int iters, int plain[], int *ok);
+-  void ldpc_decode_log(double codeword[], int iters, int plain[], int *ok);
++  void ldpc_decode(float llcodeword[], int iters, int plain[], int *ok);
++  void ldpc_decode_log(float codeword[], int iters, int plain[], int *ok);
+ 
+   int plain[174]; // will be 0/1 bits.
+   int ldpc_ok = 0;     // 87 will mean success.
+ 
+-  ldpc_decode((double*)ll174, ldpc_iters, plain, &ldpc_ok);
++  ldpc_decode((float*)ll174, ldpc_iters, plain, &ldpc_ok);
+ 
+   int ok_thresh = 87; // 87 is perfect
+   if(ldpc_ok >= ok_thresh){
+@@ -2297,12 +2297,12 @@
+ 
+ #if 0
+   if(use_osd && osd_depth >= 0 && ldpc_ok >= osd_ldpc_thresh){
+-    extern int osd_decode(double codeword[174], int depth, int out[87], int*);
++    extern int osd_decode(float codeword[174], int depth, int out[87], int*);
+     extern void ldpc_encode(int plain[87], int codeword[174]);
+ 
+     int oplain[87];
+     int got_depth = -1;
+-    int osd_ok = osd_decode((double*)ll174, osd_depth, oplain, &got_depth);
++    int osd_ok = osd_decode((float*)ll174, osd_depth, oplain, &got_depth);
+     if(osd_ok){
+       // reconstruct all 174.
+       comment += "OSD-" + std::to_string(got_depth) + "-" + std::to_string(ldpc_ok);
+@@ -2325,14 +2325,14 @@
+ // XXX maybe merge w/ fft_shift() / shift200().
+ //
+ 
+-std::vector<double>
+-down_v7_f(const std::vector<std::complex<double>> &bins, int len, double hz, int rate)
++std::vector<float>
++down_v7_f(const std::vector<std::complex<float>> &bins, int len, float hz, int rate)
+ {
+   int nbins = bins.size();
+ 
+-  double bin_hz = rate / (double) len;
+-  int down = round((hz - 25) / bin_hz);
+-  std::vector<std::complex<double>> bins1(nbins);
++  float bin_hz = rate / (float) len;
++  int down = roundf((hz - 25) / bin_hz);
++  std::vector<std::complex<float>> bins1(nbins);
+   for(int i = 0; i < nbins; i++){
+     int j = i + down;
+     if(j >= 0 && j < nbins){
+@@ -2344,12 +2344,12 @@
+ 
+   // now filter to fit in 200 samples/second.
+ 
+-  double low_inner = 25.0 - shoulder200_extra;
+-  double low_outer = low_inner - shoulder200;
++  float low_inner = 25.0f - shoulder200_extra;
++  float low_outer = low_inner - shoulder200;
+   if(low_outer < 0)
+     low_outer = 0;
+-  double high_inner = 75 - 6.25 + shoulder200_extra;
+-  double high_outer = high_inner + shoulder200;
++  float high_inner = 75 - 6.25f + shoulder200_extra;
++  float high_outer = high_inner + shoulder200;
+   if(high_outer > 100)
+     high_outer = 100;
+ 
+@@ -2358,11 +2358,11 @@
+                     high_inner, high_outer);
+ 
+   // convert back to time domain and down-sample to 200 samples/second.
+-  int blen = round(len * (200.0 / rate));
+-  std::vector<std::complex<double>> bbins(blen / 2 + 1);
++  int blen = roundf(len * (200.0f / rate));
++  std::vector<std::complex<float>> bbins(blen / 2 + 1);
+   for(int i = 0; i < (int) bbins.size(); i++)
+     bbins[i] = bins1[i];
+-  std::vector<double> out = one_ifft(bbins, "down_v7b");
++  std::vector<float> out = one_ifft(bbins, "down_v7b");
+   
+   return out;
+ }
+@@ -2378,7 +2378,7 @@
+ // XXX merge with one_iter().
+ //
+ int
+-FT8::one(const std::vector<std::complex<double>> &bins, int len, double hz, int off)
++FT8::one(const std::vector<std::complex<float>> &bins, int len, float hz, int off)
+ {
+   //
+   // set up to search for best frequency and time offset.
+@@ -2388,9 +2388,9 @@
+   // move down to 25 hz and re-sample to 200 samples/second,
+   // i.e. 32 samples/symbol.
+   //
+-  std::vector<double> samples200 = down_v7_f(bins, len, hz, rate_);
++  std::vector<float> samples200 = down_v7_f(bins, len, hz, rate_);
+ 
+-  int off200 = round((off / (double) rate_) * 200.0);
++  int off200 = roundf((off / (float) rate_) * 200.0f);
+ 
+   int ret = one_iter(samples200, off200, hz);
+   return ret;
+@@ -2401,7 +2401,7 @@
+ //   perhaps in a different pass.
+ // return 0 if we could not decode.
+ int
+-FT8::one_iter(const std::vector<double> &samples200, int best_off, double hz_for_cb)
++FT8::one_iter(const std::vector<float> &samples200, int best_off, float hz_for_cb)
+ {
+   if(do_second){
+     std::vector<Strength> strengths =
+@@ -2416,7 +2416,7 @@
+               { return a.strength_ > b.strength_; } );
+     
+     for(int i = 0; i < (int) strengths.size() && i < second_count; i++){
+-      double hz = strengths[i].hz_;
++      float hz = strengths[i].hz_;
+       int off = strengths[i].off_;
+       int ret = one_iter1(samples200, off, hz, hz_for_cb, hz_for_cb);
+       if(ret > 0){
+@@ -2435,11 +2435,11 @@
+ // estimate SNR, yielding numbers vaguely similar to WSJT-X.
+ // m79 is a 79x8 complex FFT output.
+ //
+-double
++float
+ guess_snr(const ffts_t &m79)
+ {
+-  double noises = 0;
+-  double signals = 0;
++  float noises = 0;
++  float signals = 0;
+ 
+   for(int i = 0; i < 7; i++){
+     signals += std::abs(m79[i][costas[i]]);
+@@ -2453,7 +2453,7 @@
+   for(int i = 0; i < 79; i++){
+     if(i < 7 || (i >= 36 && i < 36+7) || (i >= 72 && i < 72+7))
+       continue;
+-    std::vector<double> v(8);
++    std::vector<float> v(8);
+     for(int j = 0; j < 8; j++){
+       v[j] = std::abs(m79[i][j]);
+     }
+@@ -2468,14 +2468,14 @@
+   noises *= noises; // square yields power
+   signals *= signals;
+ 
+-  double raw = signals / noises;
++  float raw = signals / noises;
+   raw -= 1; // turn (s+n)/n into s/n
+-  if(raw < 0.1)
+-    raw = 0.1;
+-  raw /= (2500.0 / 2.7); // 2.7 hz noise b/w -> 2500 hz b/w
+-  double snr = 10 * log10(raw);
++  if(raw < 0.1f)
++    raw = 0.1f;
++  raw /= (2500.0f / 2.7f); // 2.7 hz noise b/w -> 2500 hz b/w
++  float snr = 10 * log10(raw);
+   snr += 5;
+-  snr *= 1.4;
++  snr *= 1.4f;
+   return snr;
+ }
+ 
+@@ -2500,15 +2500,15 @@
+ // should be subtracted from offset.
+ //
+ void
+-fine(const ffts_t &m79, int bin0, double &adj_hz, double &adj_off)
++fine(const ffts_t &m79, int bin0, float &adj_hz, float &adj_off)
+ {
+-  adj_hz = 0.0;
+-  adj_off = 0.0;
++  adj_hz = 0.0f;
++  adj_off = 0.0f;
+   
+   // tone number for each of the 79 symbols.
+   int sym[79];
+-  double symval[79];
+-  double symphase[79];
++  float symval[79];
++  float symphase[79];
+   for(int i = 0; i < 79; i++){
+     if(i < 7){
+       sym[i] = costas[i];
+@@ -2518,9 +2518,9 @@
+       sym[i] = costas[i-72];
+     } else {
+       int mxj = -1;
+-      double mx = 0;
++      float mx = 0;
+       for(int j = 0; j < 8; j++){
+-        double x = std::abs(m79[i][j]);
++        float x = std::abs(m79[i][j]);
+         if(mxj < 0 || x > mx){
+           mx = x;
+           mxj = j;
+@@ -2532,23 +2532,23 @@
+     symval[i] = std::abs(m79[i][sym[i]]);
+   }
+ 
+-  double sum = 0;
+-  double weight_sum = 0;
++  float sum = 0;
++  float weight_sum = 0;
+   for(int i = 0; i < 79-1; i++){
+-    double d = symphase[i+1] - symphase[i];
+-    while(d > M_PI)
+-      d -= 2*M_PI;
+-    while(d < -M_PI)
+-      d += 2*M_PI;
+-    double w = symval[i];
++    float d = symphase[i+1] - symphase[i];
++    while(d > M_PIf)
++      d -= 2*M_PIf;
++    while(d < -M_PIf)
++      d += 2*M_PIf;
++    float w = symval[i];
+     sum += d * w;
+     weight_sum += w;
+   }
+-  double mean = sum / weight_sum;
++  float mean = sum / weight_sum;
+ 
+-  double err_rad = mean; // radians per symbol time
++  float err_rad = mean; // radians per symbol time
+ 
+-  double err_hz = (err_rad / (2*M_PI)) / 0.16; // cycles per symbol time
++  float err_hz = (err_rad / (2*M_PIf)) / 0.16f; // cycles per symbol time
+ 
+   // if each symbol's phase is a bit more than we expect,
+   // that means the real frequency is a bit higher
+@@ -2570,17 +2570,17 @@
+   //
+   int nearly = 0;
+   int nlate = 0;
+-  double early = 0.0;
+-  double late = 0.0;
++  float early = 0.0f;
++  float late = 0.0f;
+   for(int i = 1; i < 79; i++){
+-    double ph0 = std::arg(m79[i-1][sym[i-1]]);
+-    double ph = std::arg(m79[i][sym[i]]);
+-    double d = ph - ph0;
++    float ph0 = std::arg(m79[i-1][sym[i-1]]);
++    float ph = std::arg(m79[i][sym[i]]);
++    float d = ph - ph0;
+     d -= err_rad; // correct for hz error.
+-    while(d > M_PI)
+-      d -= 2*M_PI;
+-    while(d < -M_PI)
+-      d += 2*M_PI;
++    while(d > M_PIf)
++      d -= 2*M_PIf;
++    while(d < -M_PIf)
++      d += 2*M_PIf;
+ 
+     // if off is correct, each symbol will have the same phase (modulo
+     // the above hz correction), since each FFT bin holds an integer
+@@ -2616,7 +2616,7 @@
+       }
+       if(d < 0 && sym[i-1] <= fine_max_tone){
+         nearly++;
+-        early += fabs(d) / std::abs(sym[i] - sym[i-1]);
++        early += fabsf(d) / std::abs(sym[i] - sym[i-1]);
+       }
+     } else if(sym[i] < sym[i-1]){
+       if(d > 0 && sym[i-1] <= fine_max_tone){
+@@ -2625,7 +2625,7 @@
+       }
+       if(d < 0 && sym[i] <= fine_max_tone){
+         nlate++;
+-        late += fabs(d) / std::abs(sym[i] - sym[i-1]);
++        late += fabsf(d) / std::abs(sym[i] - sym[i-1]);
+       }
+     }
+   }
+@@ -2640,12 +2640,12 @@
+ 
+   // assumes 32 samples/symbol.
+   if(nearly > 2*nlate){
+-    adj_off = round(32 * early / fine_thresh);
++    adj_off = roundf(32 * early / fine_thresh);
+     if(adj_off > fine_max_off)
+       adj_off = fine_max_off;
+   } else if(nlate > 2*nearly){
+-    adj_off = 0 - round(32 * late / fine_thresh);
+-    if(fabs(adj_off) > fine_max_off)
++    adj_off = 0 - roundf(32 * late / fine_thresh);
++    if(fabsf(adj_off) > fine_max_off)
+       adj_off = -fine_max_off;
+   }
+ }
+@@ -2659,12 +2659,12 @@
+ // return 0 if we could not decode.
+ //
+ int
+-FT8::one_iter1(const std::vector<double> &samples200x,
+-               int best_off, double best_hz,
+-               double hz0_for_cb, double hz1_for_cb)
++FT8::one_iter1(const std::vector<float> &samples200x,
++               int best_off, float best_hz,
++               float hz0_for_cb, float hz1_for_cb)
+ {
+   // put best_hz in the middle of bin 4, at 25.0.
+-  std::vector<double> samples200 = shift200(samples200x, 0, samples200x.size(),
++  std::vector<float> samples200 = shift200(samples200x, 0, samples200x.size(),
+                                             best_hz);
+ 
+   // mini 79x8 FFT.
+@@ -2673,16 +2673,16 @@
+   // look at symbol-to-symbol phase change to try
+   // to improve best_hz and best_off.
+   if(do_fine_hz || do_fine_off){
+-    double adj_hz = 0;
+-    double adj_off = 0;
++    float adj_hz = 0;
++    float adj_off = 0;
+     fine(m79, 4, adj_hz, adj_off);
+     if(do_fine_hz == 0)
+       adj_hz = 0;
+     if(do_fine_off == 0)
+       adj_off = 0;
+-    if(fabs(adj_hz) < 6.25/4 && fabs(adj_off) < 4){
++    if(fabsf(adj_hz) < 6.25f/4 && fabsf(adj_off) < 4){
+       best_hz += adj_hz;
+-      best_off += round(adj_off);
++      best_off += roundf(adj_off);
+       if(best_off < 0)
+         best_off = 0;
+       samples200 = shift200(samples200x, 0, samples200x.size(), best_hz);
+@@ -2690,14 +2690,14 @@
+     }
+   }
+ 
+-  double ll174[174];
++  float ll174[174];
+ 
+   if(soft_ones){
+     if(soft_ones == 1){
+       soft_decode(m79, ll174);
+     } else {
+-      std::vector<std::vector<double>> psig79(79);
+-      std::vector<std::vector<double>> pnoise79(79);
++      std::vector<std::vector<float>> psig79(79);
++      std::vector<std::vector<float>> pnoise79(79);
+       c_soft_decode_first(m79, psig79, pnoise79);
+       c_soft_decode_second(psig79, pnoise79, ll174);
+     }
+@@ -2708,7 +2708,7 @@
+   }
+ 
+   if(soft_pairs){
+-    double p174[174];
++    float p174[174];
+     soft_decode_pairs(m79, p174);
+     int ret = try_decode(samples200, p174, best_hz, best_off,
+                          hz0_for_cb, hz1_for_cb, 1, "", m79);
+@@ -2719,7 +2719,7 @@
+   }
+ 
+   if(soft_triples){
+-    double p174[174];
++    float p174[174];
+     soft_decode_triples(m79, p174);
+     int ret = try_decode(samples200, p174, best_hz, best_off,
+                          hz0_for_cb, hz1_for_cb, 1, "", m79);
+@@ -2734,14 +2734,14 @@
+         // just CQ
+         continue;
+       }
+-      double n174[174];
++      float n174[174];
+       for(int i = 0; i < 174; i++){
+         if(i < 28){
+           int bit = h & (1 << 27);
+           if(bit){
+-            n174[i] = -4.97;
++            n174[i] = -4.97f;
+           } else {
+-            n174[i] = 4.97;
++            n174[i] = 4.97f;
+           }
+           h <<= 1;
+         } else {
+@@ -2759,14 +2759,14 @@
+   if(use_hints == 1){
+     for(int hi = 0; hi < (int)hints2_.size(); hi++){
+       int h = hints2_[hi]; // 28-bit number, goes in ll174 29:29+28
+-      double n174[174];
++      float n174[174];
+       for(int i = 0; i < 174; i++){
+         if(i >= 29 && i < 29+28){
+           int bit = h & (1 << 27);
+           if(bit){
+-            n174[i] = -4.97;
++            n174[i] = -4.97f;
+           } else {
+-            n174[i] = 4.97;
++            n174[i] = 4.97f;
+           }
+           h <<= 1;
+         } else {
+@@ -2793,21 +2793,21 @@
+ //
+ void
+ FT8::subtract(const std::vector<int> re79,
+-              double hz0,
+-              double hz1,
+-              double off_sec)
++              float hz0,
++              float hz1,
++              float off_sec)
+ {
+   int block = blocksize(rate_);
+-  double bin_hz = rate_ / (double) block;
++  float bin_hz = rate_ / (float) block;
+   int off0 = off_sec * rate_;
+ 
+-  double mhz = (hz0 + hz1) / 2.0;
+-  int bin0 = round(mhz / bin_hz);
++  float mhz = (hz0 + hz1) / 2.0f;
++  int bin0 = roundf(mhz / bin_hz);
+ 
+   // move nsamples so that signal is centered in bin0.
+-  double diff0 = (bin0 * bin_hz) - hz0;
+-  double diff1 = (bin0 * bin_hz) - hz1;
+-  std::vector<double> moved = hilbert_shift(nsamples_, diff0, diff1, rate_);
++  float diff0 = (bin0 * bin_hz) - hz0;
++  float diff1 = (bin0 * bin_hz) - hz1;
++  std::vector<float> moved = hilbert_shift(nsamples_, diff0, diff1, rate_);
+ 
+   ffts_t bins = ffts(moved, off0, block, "subtract");
+ 
+@@ -2816,33 +2816,33 @@
+   if((int) bins.size() < 79)
+     return;
+ 
+-  std::vector<double> phases(79);
+-  std::vector<double> amps(79);
++  std::vector<float> phases(79);
++  std::vector<float> amps(79);
+   for(int i = 0; i < 79; i++){
+     int sym = bin0 + re79[i];
+-    std::complex<double> c = bins[i][sym];
++    std::complex<float> c = bins[i][sym];
+     phases[i] = std::arg(c);
+ 
+     // FFT multiplies magnitudes by number of bins,
+     // or half the number of samples.
+-    amps[i] = std::abs(c) / (block / 2.0);
++    amps[i] = std::abs(c) / (block / 2.0f);
+   }
+ 
+-  int ramp = round(block * subtract_ramp);
++  int ramp = roundf(block * subtract_ramp);
+   if(ramp < 1)
+     ramp = 1;
+ 
+   // initial ramp part of first symbol.
+   {
+     int sym = bin0 + re79[0];
+-    double phase = phases[0];
+-    double amp = amps[0];
+-    double hz = 6.25 * sym;
+-    double dtheta = 2 * M_PI / (rate_ / hz); // advance per sample
++    float phase = phases[0];
++    float amp = amps[0];
++    float hz = 6.25f * sym;
++    float dtheta = 2 * M_PIf / (rate_ / hz); // advance per sample
+     for(int jj = 0; jj < ramp; jj++){
+-      double theta = phase + jj * dtheta;
+-      double x = amp * cos(theta);
+-      x *= jj / (double) ramp;
++      float theta = phase + jj * dtheta;
++      float x = amp * cosf(theta);
++      x *= jj / (float) ramp;
+       int iii = off0 + block*0 + jj;
+       moved[iii] -= x;
+     }
+@@ -2851,17 +2851,17 @@
+   for(int si = 0; si < 79; si++){
+     int sym = bin0 + re79[si];
+ 
+-    double phase = phases[si];
+-    double amp = amps[si];
++    float phase = phases[si];
++    float amp = amps[si];
+     
+-    double hz = 6.25 * sym;
+-    double dtheta = 2 * M_PI / (rate_ / hz); // advance per sample
++    float hz = 6.25f * sym;
++    float dtheta = 2 * M_PIf / (rate_ / hz); // advance per sample
+ 
+     // we've already done the first ramp for this symbol.
+     // now for the steady part between ramps.
+     for(int jj = ramp; jj < block-ramp; jj++){
+-      double theta = phase + jj * dtheta;
+-      double x = amp * cos(theta);
++      float theta = phase + jj * dtheta;
++      float x = amp * cosf(theta);
+       int iii = off0 + block*si + jj;
+       moved[iii] -= x;
+     }
+@@ -2874,43 +2874,43 @@
+     // to inaccuracies in hz or offset.
+ 
+     // at start of this symbol's off-ramp.
+-    double theta = phase + (block-ramp) * dtheta;
++    float theta = phase + (block-ramp) * dtheta;
+ 
+-    double hz1;
+-    double phase1;
++    float hz1;
++    float phase1;
+     if(si+1 >= 79){
+       hz1 = hz;
+       phase1 = phase;
+     } else {
+       int sym1 = bin0 + re79[si+1];
+-      hz1 = 6.25 * sym1;
++      hz1 = 6.25f * sym1;
+       phase1 = phases[si+1];
+     }
+-    double dtheta1 = 2 * M_PI / (rate_ / hz1);
++    float dtheta1 = 2 * M_PIf / (rate_ / hz1);
+ 
+     // add this to dtheta for each sample, to gradually
+     // change the frequency.
+-    double inc = (dtheta1 - dtheta) / (2.0 * ramp);
++    float inc = (dtheta1 - dtheta) / (2.0f * ramp);
+ 
+     // after we've applied all those inc's, what will the
+     // phase be at the end of the next symbol's initial ramp,
+     // if we don't do anything to correct it?
+-    double actual = theta + dtheta*2.0*ramp + inc*4.0*ramp*ramp/2.0;
++    float actual = theta + dtheta*2.0f*ramp + inc*4.0f*ramp*ramp/2.0f;
+ 
+     // what phase does the next symbol want to be at when
+     // its on-ramp finishes?
+-    double target = phase1 + dtheta1*ramp;
++    float target = phase1 + dtheta1*ramp;
+ 
+     // ???
+-    while(fabs(target - actual) > M_PI){
++    while(fabsf(target - actual) > M_PIf){
+       if(target < actual)
+-        target += 2*M_PI;
++        target += 2*M_PIf;
+       else
+-        target -= 2*M_PI;
++        target -= 2*M_PIf;
+     }
+ 
+     // adj is to be spread evenly over the off-ramp and on-ramp samples.
+-    double adj = target - actual;
++    float adj = target - actual;
+ 
+     int end = block + ramp;
+     if(si == 79-1)
+@@ -2918,17 +2918,17 @@
+     
+     for(int jj = block-ramp; jj < end; jj++){
+       int iii = off0 + block*si + jj;
+-      double x = amp * cos(theta);
++      float x = amp * cosf(theta);
+ 
+       // trail off to zero at the very end.
+       if(si == 79-1)
+-        x *= 1.0 - ((jj - (block - ramp)) / (double) ramp);
++        x *= 1.0f - ((jj - (block - ramp)) / (float) ramp);
+       
+       moved[iii] -= x;
+ 
+       theta += dtheta;
+       dtheta += inc;
+-      theta += adj / (2.0 * ramp);
++      theta += adj / (2.0f * ramp);
+     }
+   }
+ 
+@@ -2944,9 +2944,9 @@
+ // return 0 if we could not decode.
+ //
+ int
+-FT8::try_decode(const std::vector<double> &samples200,
+-                double ll174[174],
+-                double best_hz, int best_off_samples, double hz0_for_cb, double hz1_for_cb,
++FT8::try_decode(const std::vector<float> &samples200,
++                float ll174[174],
++                float best_hz, int best_off_samples, float hz0_for_cb, float hz1_for_cb,
+                 int use_osd, const char *comment1,
+                 const ffts_t &m79)
+ {
+@@ -2971,17 +2971,17 @@
+ 
+     if(do_third == 1){
+       // fine-tune offset and hz for better subtraction.
+-      double best_off = best_off_samples / 200.0;
++      float best_off = best_off_samples / 200.0f;
+       search_both_known(samples200, 200, re79,
+                         best_hz, best_off,
+                         best_hz, best_off);
+-      best_off_samples = round(best_off * 200.0);
++      best_off_samples = roundf(best_off * 200.0f);
+     }
+ 
+     // convert starting sample # from 200 samples/second back to rate_.
+     // also hz.
+-    double best_off = best_off_samples / 200.0; // convert to seconds
+-    best_hz = hz0_for_cb + (best_hz - 25.0);
++    float best_off = best_off_samples / 200.0f; // convert to seconds
++    best_hz = hz0_for_cb + (best_hz - 25.0f);
+ 
+     if(do_third == 2){
+       // fine-tune offset and hz for better subtraction.
+@@ -2990,7 +2990,7 @@
+                         best_hz, best_off);
+     }
+ 
+-    double snr = guess_snr(m79);
++    float snr = guess_snr(m79);
+     
+     if(cb_ != 0){
+       cb_mu_.lock();
+@@ -3013,18 +3013,18 @@
+ std::mutex FT8::cb_mu_;
+ 
+ void
+-entry(double xsamples[], int nsamples, int start, int rate,
+-      double min_hz,
+-      double max_hz,
++entry(float xsamples[], int nsamples, int start, int rate,
++      float min_hz,
++      float max_hz,
+       int hints1[],
+       int hints2[],
+       cb_t cb)
+ {
+-  double t0 = now();
+-  double deadline = t0 + budget;
+-  double final_deadline = t0 + budget;
++  float t0 = now();
++  float deadline = t0 + budget;
++  float final_deadline = t0 + budget;
+ 
+-  std::vector<double> samples(nsamples);
++  std::vector<float> samples(nsamples);
+   for(int i = 0; i < nsamples; i++){
+     samples[i] = xsamples[i];
+   }
+@@ -3035,21 +3035,21 @@
+   if(max_hz > rate/2){
+     max_hz = rate/2;
+   }
+-  double per = (max_hz - min_hz) / nthreads;
++  float per = (max_hz - min_hz) / nthreads;
+ 
+   std::vector<FT8 *> thv;
+ 
+   for(int i = 0; i < nthreads; i++){
+-    double hz0 = min_hz + i * per;
++    float hz0 = min_hz + i * per;
+     if(i > 0 || overlap_edges)
+       hz0 -= overlap;
+     
+-    double hz1 = min_hz + (i + 1) * per;
++    float hz1 = min_hz + (i + 1) * per;
+     if(i != nthreads-1 || overlap_edges)
+       hz1 += overlap;
+ 
+-    hz0 = std::max(hz0, 0.0);
+-    hz1 = std::min(hz1, (rate / 2.0) - 50);
++    hz0 = std::max(hz0, 0.0f);
++    hz1 = std::min(hz1, (rate / 2.0f) - 50);
+ 
+     FT8 *ft8 = new FT8(samples,
+                        hz0, hz1,
+@@ -3070,13 +3070,13 @@
+   }
+ }
+ 
+-double
++float
+ set(std::string param, std::string val)
+ {
+   struct sss {
+     const char *name;
+     void *addr;
+-    int type; // 0 int, 1 double
++    int type; // 0 int, 1 float
+   };
+   struct sss params[] =
+     {
+@@ -3152,15 +3152,15 @@
+     if(param == params[i].name){
+       if(val.size() > 0){
+         if(params[i].type == 0){
+-          *(int*)params[i].addr = round(atof(val.c_str()));
++          *(int*)params[i].addr = roundf(strtof(val.c_str(), NULL));
+         } else if(params[i].type == 1){
+-          *(double*)params[i].addr = atof(val.c_str());
++          *(float*)params[i].addr = strtof(val.c_str(), NULL);
+         }
+       }
+       if(params[i].type == 0){
+         return *(int*)params[i].addr;
+       } else if(params[i].type == 1){
+-        return *(double*)params[i].addr;
++        return *(float*)params[i].addr;
+       } else {
+         fprintf(stderr, "weird type %d\n", params[i].type);
+         return 0;
+diff -Nuar fate-origin_main.orig/js8.h fate-origin_main/js8.h
+--- fate-origin_main.orig/js8.h	2022-02-10 17:01:24.000000000 -0500
++++ fate-origin_main/js8.h	2025-07-19 09:31:01.472477578 -0400
+@@ -5,34 +5,34 @@
+ #include <complex>
+ #include "fft.h"
+ 
+-typedef int (*cb_t)(int *a91, double hz0, double hz1, double off,
+-                    const char *, double snr, int pass,
++typedef int (*cb_t)(int *a91, float hz0, float hz1, float off,
++                    const char *, float snr, int pass,
+                     int correct_bits);
+ 
+ class Strength {
+ public:
+-  double hz_;
++  float hz_;
+   int off_;
+-  double strength_; // higher is better
++  float strength_; // higher is better
+ };
+ 
+ class FT8 {
+ public:
+   std::thread *th_;
+ 
+-  double min_hz_;
+-  double max_hz_;
+-  std::vector<double> samples_;  // input to each pass
+-  std::vector<double> nsamples_; // subtract from here
++  float min_hz_;
++  float max_hz_;
++  std::vector<float> samples_;  // input to each pass
++  std::vector<float> nsamples_; // subtract from here
+ 
+   int start_; // sample number of 0.5 seconds into samples[]
+   int rate_;  // samples/second
+-  double deadline_; // start time + budget
+-  double final_deadline_; // keep going this long if no decodes
++  float deadline_; // start time + budget
++  float final_deadline_; // keep going this long if no decodes
+   std::vector<int> hints1_;
+   std::vector<int> hints2_;
+   int pass_;
+-  double down_hz_;
++  float down_hz_;
+ 
+   static std::mutex cb_mu_;
+   cb_t cb_; // call-back into Python with successful decode
+@@ -41,93 +41,93 @@
+   int hack_size_;
+   int hack_off_;
+   int hack_len_;
+-  double hack_0_;
+-  double hack_1_;
+-  const double *hack_data_;
+-  std::vector<std::complex<double>> hack_bins_;
++  float hack_0_;
++  float hack_1_;
++  const float *hack_data_;
++  std::vector<std::complex<float>> hack_bins_;
+ 
+   Plan *plan32_;
+ 
+-  FT8(const std::vector<double> &samples,
+-      double min_hz,
+-      double max_hz,
++  FT8(const std::vector<float> &samples,
++      float min_hz,
++      float max_hz,
+       int start, int rate,
+-      int hints1[], int hints2[], double deadline,
+-      double final_deadline,
++      int hints1[], int hints2[], float deadline,
++      float final_deadline,
+       cb_t cb);
+ 
+   ~FT8() { }
+   
+-  double one_coarse_strength(const ffts_t &bins, int bi0, int si0);
++  float one_coarse_strength(const ffts_t &bins, int bi0, int si0);
+   std::vector<Strength> coarse(const ffts_t &bins, int si0, int si1);
+-  std::vector<double> reduce_rate(const std::vector<double> &a, double hz0, double hz1,
+-                                  int arate, int brate,
+-                                  double &delta_hz);
++  std::vector<float> reduce_rate(const std::vector<float> &a, float hz0, float hz1,
++                                 int arate, int brate,
++                                 float &delta_hz);
+  void go();
+- double one_strength(const std::vector<double> &samples200, double hz, int off);
+- double one_strength_known(const std::vector<double> &samples,
+-                           int rate,
+-                           const std::vector<int> &syms,
+-                           double hz, int off);
+- int search_time_fine(const std::vector<double> &samples200,
++ float one_strength(const std::vector<float> &samples200, float hz, int off);
++ float one_strength_known(const std::vector<float> &samples,
++                          int rate,
++                          const std::vector<int> &syms,
++                          float hz, int off);
++ int search_time_fine(const std::vector<float> &samples200,
+                       int off0, int offN,
+-                      double hz,
++                      float hz,
+                       int gran,
+-                      double &str);
+- int search_time_fine_known(const std::vector<std::complex<double>> &bins,
++                      float &str);
++ int search_time_fine_known(const std::vector<std::complex<float>> &bins,
+                             int rate,
+                             const std::vector<int> &syms,
+                             int off0, int offN,
+-                            double hz,
++                            float hz,
+                             int gran,
+-                            double &str);
+- std::vector<Strength> search_both(const std::vector<double> &samples200,
+-                                   double hz0, int hz_n, double hz_win,
++                            float &str);
++ std::vector<Strength> search_both(const std::vector<float> &samples200,
++                                   float hz0, int hz_n, float hz_win,
+                                    int off0, int off_n, int off_win);
+- void search_both_known(const std::vector<double> &samples,
++ void search_both_known(const std::vector<float> &samples,
+                         int rate,
+                         const std::vector<int> &syms,
+-                        double hz0,
+-                        double off_secs0, // seconds
+-                        double &hz_out, double &off_out);
+- std::vector<double> fft_shift(const std::vector<double> &samples, int off, int len,
+-                               int rate, double hz);
+- std::vector<double> fft_shift_f(const std::vector<std::complex<double>> &bins, int rate, double hz);
+- std::vector<double> shift200(const std::vector<double> &samples200, int off, int len, double hz);
+- ffts_t extract(const std::vector<double> &samples200, double hz, int off);
+- int one(const std::vector<std::complex<double>> &bins, int len, double hz, int off);
+- int one_iter(const std::vector<double> &samples200, int best_off, double hz_for_cb);
+- int one_iter1(const std::vector<double> &samples200x,
+-               int best_off, double best_hz,
+-               double hz0_for_cb, double hz1_for_cb);
++                        float hz0,
++                        float off_secs0, // seconds
++                        float &hz_out, float &off_out);
++ std::vector<float> fft_shift(const std::vector<float> &samples, int off, int len,
++                              int rate, float hz);
++ std::vector<float> fft_shift_f(const std::vector<std::complex<float>> &bins, int rate, float hz);
++ std::vector<float> shift200(const std::vector<float> &samples200, int off, int len, float hz);
++ ffts_t extract(const std::vector<float> &samples200, float hz, int off);
++ int one(const std::vector<std::complex<float>> &bins, int len, float hz, int off);
++ int one_iter(const std::vector<float> &samples200, int best_off, float hz_for_cb);
++ int one_iter1(const std::vector<float> &samples200x,
++               int best_off, float best_hz,
++               float hz0_for_cb, float hz1_for_cb);
+  void subtract(const std::vector<int> re79,
+-               double hz0,
+-               double hz1,
+-               double off_sec);
+- int try_decode(const std::vector<double> &samples200,
+-                double ll174[174],
+-                double best_hz, int best_off_samples, double hz0_for_cb, double hz1_for_cb,
++               float hz0,
++               float hz1,
++               float off_sec);
++ int try_decode(const std::vector<float> &samples200,
++                float ll174[174],
++                float best_hz, int best_off_samples, float hz0_for_cb, float hz1_for_cb,
+                 int use_osd, const char *comment1,
+                 const ffts_t &m79);
+ };
+ 
+-void soft_decode(const ffts_t &c79, double ll174[]);
++void soft_decode(const ffts_t &c79, float ll174[]);
+ void c_soft_decode_first(const ffts_t &c79x,
+-                         std::vector<std::vector<double>> &psig79,
+-                         std::vector<std::vector<double>> &pnoise79);
+-void c_soft_decode_second(const std::vector<std::vector<double>> &psig79,
+-                          const std::vector<std::vector<double>> &pnoise79,
+-                          double ll174[]);
++                         std::vector<std::vector<float>> &psig79,
++                         std::vector<std::vector<float>> &pnoise79);
++void c_soft_decode_second(const std::vector<std::vector<float>> &psig79,
++                          const std::vector<std::vector<float>> &pnoise79,
++                          float ll174[]);
+ int check_crc(const int a91[91]);
+-std::vector< std::vector<std::complex<double>> > c_convert_to_snr(const std::vector< std::vector<std::complex<double>> > &m79);
+-double ll2p(double ll);
+-double p2ll(double p);
++std::vector< std::vector<std::complex<float>> > c_convert_to_snr(const std::vector< std::vector<std::complex<float>> > &m79);
++float ll2p(float ll);
++float p2ll(float p);
+    
+-double set(std::string param, std::string val);
++float set(std::string param, std::string val);
+ 
+-void entry(double xsamples[], int nsamples, int start, int rate,
+-           double min_hz,
+-           double max_hz,
++void entry(float xsamples[], int nsamples, int start, int rate,
++           float min_hz,
++           float max_hz,
+            int hints1[],
+            int hints2[],
+            cb_t cb);
+diff -Nuar fate-origin_main.orig/libldpc.cc fate-origin_main/libldpc.cc
+--- fate-origin_main.orig/libldpc.cc	2022-02-10 17:01:24.000000000 -0500
++++ fate-origin_main/libldpc.cc	2025-07-19 10:20:53.844553421 -0400
+@@ -25,11 +25,11 @@
+ // thank you Douglas Bagnall
+ // https://math.stackexchange.com/a/446411
+ float fast_tanh(float x){
+-  if(x < -4.97){
+-    return -1.0;
++  if(x < -4.97f){
++    return -1.0f;
+   }
+-  if(x > 4.97){
+-    return 1.0;
++  if(x > 4.97f){
++    return 1.0f;
+   }
+   float x2 = x * x;
+   float a = x * (135135.0f + x2 * (17325.0f + x2 * (378.0f + x2)));
+@@ -42,10 +42,10 @@
+ // iters is how hard to try.
+ // ok == 87 means success.
+ void
+-ldpc_decode(double codeword[], int iters, int plain[], int *ok)
++ldpc_decode(float codeword[], int iters, int plain[], int *ok)
+ {
+-  double m[87][174];
+-  double e[87][174];
++  float m[87][174];
++  float e[87][174];
+   int best_score = -1;
+   int best_cw[174];
+   
+@@ -55,7 +55,7 @@
+ 
+   for(int i = 0; i < 174; i++)
+     for(int j = 0; j < 87; j++)
+-      e[j][i] = 0.0;
++      e[j][i] = 0.0f;
+ 
+   for(int iter = 0; iter < iters; iter++){
+     for(int j = 0; j < 87; j++){
+@@ -63,11 +63,11 @@
+         int i1 = Nm[j][ii1] - 1;
+         if(i1 < 0)
+           continue;
+-        double a = 1.0;
++        float a = 1.0f;
+         for(int ii2 = 0; ii2 < 7; ii2++){
+           int i2 = Nm[j][ii2] - 1;
+           if(i2 >= 0 && i2 != i1){
+-            a *= fast_tanh(m[j][i2] / 2.0);
++            a *= fast_tanh(m[j][i2] / 2.0f);
+           }
+         }
+         e[j][i1] = log((1 + a) / (1 - a));
+@@ -76,10 +76,10 @@
+           
+     int cw[174];
+     for(int i = 0; i < 174; i++){
+-      double l = codeword[i];
++      float l = codeword[i];
+       for(int j = 0; j < 3; j++)
+         l += e[Mn[i][j]-1][i];
+-      cw[i] = (l <= 0.0);
++      cw[i] = (l <= 0.0f);
+     }
+     int score = ldpc_check(cw);
+     if(score == 87){
+@@ -106,7 +106,7 @@
+     for(int i = 0; i < 174; i++){
+       for(int ji1 = 0; ji1 < 3; ji1++){
+         int j1 = Mn[i][ji1] - 1;
+-        double l = codeword[i];
++        float l = codeword[i];
+         for(int ji2 = 0; ji2 < 3; ji2++){
+           if(ji1 != ji2){
+             int j2 = Mn[i][ji2] - 1;
+@@ -281,7 +281,7 @@
+ //                  # for each other bit mentioned in this parity check
+ //                  for ii in Nm[j]:
+ //                      if ii != i:
+-//                          a *= math.tanh(m[j][ii-1] / 2.0)
++//                          a *= math.tanh(m[j][ii-1] / 2.0f)
+ //                  e[j][i-1] = math.log((1 + a) / (1 - a))
+ //
+ //          # decide if we are done -- compute the corrected codeword,
+diff -Nuar fate-origin_main.orig/osd.cc fate-origin_main/osd.cc
+--- fate-origin_main.orig/osd.cc	2022-02-10 17:01:24.000000000 -0500
++++ fate-origin_main/osd.cc	2025-07-17 21:35:53.000000000 -0400
+@@ -30,20 +30,20 @@
+ // ll174 is what was received.
+ // ldpc-encode xplain; how close is the
+ // result to what we received?
+-double
+-osd_score(int xplain[91], double ll174[174])
++float
++osd_score(int xplain[91], float ll174[174])
+ {
+   int xcode[174];
+   ldpc_encode(xplain, xcode);
+ 
+-  double score = 0;
++  float score = 0;
+   for(int i = 0; i < 174; i++){
+     if(xcode[i]){
+       // one-bit, expect ll to be negative.
+-      score -= ll174[i] * 4.6;
++      score -= ll174[i] * 4.6f;
+     } else {
+       // zero-bit, expect ll to be positive.
+-      score += ll174[i] * 4.6;
++      score += ll174[i] * 4.6f;
+     }
+   }
+ 
+@@ -91,12 +91,12 @@
+ // returns 0 or 1, with decoded plain bits in out91[].
+ // and actual depth used in *out_depth.
+ int
+-osd_decode(double codeword[174], int depth, int out[91], int *out_depth)
++osd_decode(float codeword[174], int depth, int out[91], int *out_depth)
+ {
+   // strength = abs(codeword)
+-  double strength[174];
++  float strength[174];
+   for(int i = 0; i < 174; i++){
+-    double x = codeword[i];
++    float x = codeword[i];
+     strength[i] = (x < 0 ? -x : x);
+   }
+   
+@@ -164,7 +164,7 @@
+   }
+ 
+   int best_plain[91];
+-  double best_score = 0;
++  float best_score = 0;
+   int got_a_best = 0;
+   int best_depth = -1;
+ 
+@@ -174,7 +174,7 @@
+ 
+   int osd_thresh = -500;
+ 
+-  double xscore = osd_score(xplain, codeword);
++  float xscore = osd_score(xplain, codeword);
+   int ch = osd_check(xplain);
+   if(xscore < osd_thresh && ch){
+     if(got_a_best == 0 || xscore < best_score){
+@@ -198,7 +198,7 @@
+     y1[i] ^= 1;
+     matmul(gen1_inv, y1, xplain);
+     y1[i] ^= 1;
+-    double xscore = osd_score(xplain, codeword);
++    float xscore = osd_score(xplain, codeword);
+     int ch = osd_check(xplain);
+     if(xscore < osd_thresh && ch){
+       if(got_a_best == 0 || xscore < best_score){
+diff -Nuar fate-origin_main.orig/pack.cc fate-origin_main/pack.cc
+--- fate-origin_main.orig/pack.cc	2022-02-10 17:01:24.000000000 -0500
++++ fate-origin_main/pack.cc	2025-07-19 09:59:20.601009741 -0400
+@@ -143,20 +143,20 @@
+     codeword[colorder[i]] = cw[i];
+ }
+ 
+-std::vector<double>
++std::vector<float>
+ fsk(std::vector<int> symbols,
+-    double hz, double spacing,
++    float hz, float spacing,
+     int rate, int symsamples)
+ {
+-  std::vector<double> v;
++  std::vector<float> v;
+ 
+-  double phase = 0.0;
++  float phase = 0.0f;
+   for(int i = 0; i < symbols.size() * symsamples; i++){
+-    v.push_back(cos(phase));
++    v.push_back(cosf(phase));
+     int si = i / symsamples;
+     int sym = symbols[si];
+-    double nhz = hz + sym * spacing;
+-    phase += 2*M_PI * (1.0 / rate) * nhz;
++    float nhz = hz + sym * spacing;
++    phase += 2*M_PIf * (1.0f / rate) * nhz;
+   }
+ 
+   return v;
+@@ -225,8 +225,8 @@
+   assert(text.size() == 0 || consumed > 0);
+ }
+ 
+-std::vector<double>
+-pack_any(int a87[87], int rate, double hz)
++std::vector<float>
++pack_any(int a87[87], int rate, float hz)
+ {
+   // why 76 and not 72 or 75?
+   int crc[12];
+@@ -246,7 +246,7 @@
+ 
+   int block = 1920 / (12000 / rate);
+ 
+-  std::vector<double> v = fsk(a79, hz, 6.25, rate, block);
++  std::vector<float> v = fsk(a79, hz, 6.25f, rate, block);
+ 
+   return v;
+ }
+@@ -270,8 +270,8 @@
+ // returns just the samples for symbols,
+ // i.e. starting at 1/2 second into the cycle.
+ //
+-std::vector<double>
+-pack_text(std::string text, int &consumed, int itype, int rate, double hz)
++std::vector<float>
++pack_text(std::string text, int &consumed, int itype, int rate, float hz)
+ {
+   int a87[87];
+   memset(a87, 0, sizeof(a87));
+@@ -289,7 +289,7 @@
+   
+   int consumed;
+   std::string s = "xxx";
+-  std::vector<double> v = pack_text(s, consumed, 0, rate, 1500);
++  std::vector<float> v = pack_text(s, consumed, 0, rate, 1500);
+ 
+   v.resize(15 * rate);
+ 
+@@ -462,8 +462,8 @@
+   return x;
+ }
+ 
+-std::vector<double>
+-pack_cq(std::string call, std::string grid, int rate, double hz)
++std::vector<float>
++pack_cq(std::string call, std::string grid, int rate, float hz)
+ {
+   int a87[87];
+   memset(a87, 0, sizeof(a87));
+@@ -492,12 +492,12 @@
+ //   e.g. 19 is HW CPY and 25 is SNR.
+ // itype is 1 for start, 2 for finish, 3 for both.
+ //
+-std::vector<double>
++std::vector<float>
+ pack_directed(std::string my_call, std::string other_call,
+               int cmd,
+               int extra,
+               int itype,
+-              int rate, double hz)
++              int rate, float hz)
+ {
+   int a87[87];
+   memset(a87, 0, sizeof(a87));
+diff -Nuar fate-origin_main.orig/pack.h fate-origin_main/pack.h
+--- fate-origin_main.orig/pack.h	2022-02-10 17:01:24.000000000 -0500
++++ fate-origin_main/pack.h	2025-07-16 21:09:45.000000000 -0400
+@@ -1,11 +1,11 @@
+ void ldpc_encode(int plain[87], int codeword[174]);
+ 
+-std::vector<double> pack_text(std::string text, int &consumed, int itype, int rate, double hz);
++std::vector<float> pack_text(std::string text, int &consumed, int itype, int rate, float hz);
+ 
+-std::vector<double> pack_cq(std::string call, std::string grid, int rate, double hz);
++std::vector<float> pack_cq(std::string call, std::string grid, int rate, float hz);
+ 
+-std::vector<double> pack_directed(std::string my_call, std::string other_call,
+-                                  int cmd, int extra, int itype, int rate, double hz);
++std::vector<float> pack_directed(std::string my_call, std::string other_call,
++                                 int cmd, int extra, int itype, int rate, float hz);
+ 
+ bool pack_call_28(std::string call, unsigned int &x);
+ 
+diff -Nuar fate-origin_main.orig/sdrip.cc fate-origin_main/sdrip.cc
+--- fate-origin_main.orig/sdrip.cc	2022-02-10 17:01:24.000000000 -0500
++++ fate-origin_main/sdrip.cc	2025-07-19 10:10:59.343447708 -0400
+@@ -43,7 +43,7 @@
+   long long hz = -1;
+   int comma = chan.find(",");
+   if(comma >= 0){
+-    hz = atof(chan.c_str() + comma + 1) * 1000000.0;
++    hz = strtof(chan.c_str() + comma + 1, NULL) * 1000000.0f;
+     hostname = std::string(chan, 0, comma);
+   } else {
+     hostname = chan;
+@@ -117,16 +117,16 @@
+ 
+   if(rate_ < iq_rate_){
+     // Liquid DSP anti-alias filter for rate conversion.
+-    int h_len = estimate_req_filter_len(0.01, 60.0);
++    int h_len = estimate_req_filter_len(0.01f, 60.0f);
+     float h[h_len];
+-    double cutoff = (rate_ / (double) iq_rate_) / 2.0;
++    float cutoff = (rate_ / (float) iq_rate_) / 2.0f;
+     
+ #if 1
+     float bands[4] = {
+-      0.0, (float)(cutoff * 0.9), // pass-band
+-      (float)cutoff, 0.5 };     // stop-band
+-    float des[2] = { 1.0, 0.0 }; // desired response
+-    float weights[2] = { 1.0, 1.0 };
++      0.0f, (float)(cutoff * 0.9f), // pass-band
++      (float)cutoff, 0.5f };     // stop-band
++    float des[2] = { 1.0f, 0.0f }; // desired response
++    float weights[2] = { 1.0f, 1.0f };
+     liquid_firdespm_wtype wtype[2] = {
+       LIQUID_FIRDESPM_EXPWEIGHT,
+       LIQUID_FIRDESPM_FLATWEIGHT,
+@@ -134,8 +134,8 @@
+     liquid_firdespm_btype btype = LIQUID_FIRDESPM_BANDPASS;
+     firdespm_run(h_len, 2, bands, des, weights, wtype, btype, h);
+ #else
+-    cutoff *= 0.9;
+-    liquid_firdes_kaiser(h_len, cutoff, 60.0, 0.0, h);
++    cutoff *= 0.9f;
++    liquid_firdes_kaiser(h_len, cutoff, 60.0f, 0.0f, h);
+ #endif
+     
+     filter_ = firfilt_crcf_create(h, h_len);
+@@ -436,7 +436,7 @@
+ // process one I/Q sample from a UDP packet.
+ //
+ void
+-SDRIP::one_iq(const std::complex<double> iq0)
++SDRIP::one_iq(const std::complex<float> iq0)
+ {
+   if(rate_ < iq_rate_){
+     // anti-alias filter
+@@ -445,11 +445,11 @@
+     x.imag = iq0.imag();
+     firfilt_crcf_push(filter_, x);
+     firfilt_crcf_execute(filter_, &y);
+-    std::complex<double> iq1(y.real, y.imag);
++    std::complex<float> iq1(y.real, y.imag);
+   
+     // convert iq_rate_ samples/second to rate_.
+     iqcount_ += 1;
+-    if((long long)((iqcount_ / (double) iq_rate_) * rate_) > outcount_){
++    if((long long)((iqcount_ / (float) iq_rate_) * rate_) > outcount_){
+       samples_.push_back(iq1);
+       outcount_ += 1;
+     }
+@@ -498,7 +498,7 @@
+     samples_mu_.lock();
+ 
+     for(int i = 0; i < nmissing; i++){
+-      std::complex<double> junk(0, 0);
++      std::complex<float> junk(0, 0);
+       one_iq(junk);
+     }
+ 
+@@ -513,7 +513,7 @@
+         // sign-extend
+         qq |= 0xff000000;
+       }
+-      std::complex<double> c(std::complex<double>((double) ii, (double) qq));
++      std::complex<float> c(std::complex<float>((float) ii, (float) qq));
+       one_iq(c);
+     }
+ 
+@@ -532,7 +532,7 @@
+ // rate_ samples / second.
+ // sets t to time of last sample.
+ void
+-SDRIP::get(std::vector<std::complex<double>> &v)
++SDRIP::get(std::vector<std::complex<float>> &v)
+ {
+   samples_mu_.lock();
+   v.swap(samples_);
+diff -Nuar fate-origin_main.orig/sdrip.h fate-origin_main/sdrip.h
+--- fate-origin_main.orig/sdrip.h	2022-02-10 17:01:24.000000000 -0500
++++ fate-origin_main/sdrip.h	2025-07-19 09:27:12.395957436 -0400
+@@ -31,7 +31,7 @@
+ 
+   // written by data_reader, read by get().
+   // I/Q at rate_.
+-  std::vector<std::complex<double>> samples_;
++  std::vector<std::complex<float>> samples_;
+   std::mutex samples_mu_;
+ 
+   // iq_rate_ -> rate_ conversion
+@@ -45,7 +45,7 @@
+   void data_reader();
+   std::vector<int> getitem(int item, int extra = -1);
+   void setitem(int item, std::vector<int> data);
+-  void one_iq(const std::complex<double> iq);
++  void one_iq(const std::complex<float> iq);
+ 
+ public:
+   SDRIP(int rate);
+@@ -70,7 +70,7 @@
+   void set_packet_size(int sz);
+   bool is_sdrip() { return adc_rate_ > 70000000 && adc_rate_ < 90000000; }
+   bool is_cloudsdr() { return adc_rate_ > 120000000 && adc_rate_ < 130000000; }
+-  void get(std::vector<std::complex<double>> &);
++  void get(std::vector<std::complex<float>> &);
+   int rate() { return rate_; }
+ };
+ 
+diff -Nuar fate-origin_main.orig/snd.cc fate-origin_main/snd.cc
+--- fate-origin_main.orig/snd.cc	2022-02-10 17:01:24.000000000 -0500
++++ fate-origin_main/snd.cc	2025-07-19 10:16:07.336007318 -0400
+@@ -111,21 +111,21 @@
+ void
+ SoundIn::levels()
+ {
+-  double max = 0;
+-  double sum = 0;
++  float max = 0;
++  float sum = 0;
+   int n = 0;
+-  double last_t = now();
++  float last_t = now();
+ 
+   while(1){
+-    double dummy;
+-    std::vector<double> buf = get(rate(), dummy, 0);
++    float dummy;
++    std::vector<float> buf = get(rate(), dummy, 0);
+     if(buf.size() == 0)
+       usleep(100*1000);
+     for(int i = 0; i < (int) buf.size(); i++){
+-      sum += fabs(buf[i]);
++      sum += fabsf(buf[i]);
+       n += 1;
+-      if(fabs(buf[i]) > max){
+-        max = fabs(buf[i]);
++      if(fabsf(buf[i]) > max){
++        max = fabsf(buf[i]);
+       }
+       if(n >= rate()){
+         printf("avg=%.3f peak=%.3f rate=%.1f\n", sum / n, max, n / (now() - last_t));
+@@ -225,7 +225,7 @@
+   }
+ 
+   sin->wi_ = wi;
+-  sin->time_ = timeInfo->inputBufferAdcTime + frameCount * (1.0 / sin->rate_);
++  sin->time_ = timeInfo->inputBufferAdcTime + frameCount * (1.0f / sin->rate_);
+ 
+   return 0;
+ }
+@@ -254,10 +254,10 @@
+ // if latest==1, return (up to) the most recent n samples
+ // and discard any earlier samples.
+ //
+-std::vector<double>
+-CardSoundIn::get(int n, double &t0, int latest)
++std::vector<float>
++CardSoundIn::get(int n, float &t0, int latest)
+ {
+-  std::vector<double> v;
++  std::vector<float> v;
+ 
+   if(time_ < 0 && wi_ == ri_){
+     // no input has ever arrived.
+@@ -275,16 +275,16 @@
+   // XXX there's a race here with cb().
+   t0 = time_ + dt_; // UNIX time of last sample in buf_.
+   if(wi_ > ri_){
+-    t0 -= (wi_ - ri_) * (1.0 / rate_);
++    t0 -= (wi_ - ri_) * (1.0f / rate_);
+   } else {
+-    t0 -= ((wi_ + n_) - ri_) * (1.0 / rate_);
++    t0 -= ((wi_ + n_) - ri_) * (1.0f / rate_);
+   }
+ 
+   while((int) v.size() < n){
+     if(ri_ == wi_){
+       break;
+     }
+-    double x = buf_[ri_];
++    float x = buf_[ri_];
+     v.push_back(x);
+     ri_ = (ri_ + 1) % n_;
+   }
+@@ -382,12 +382,12 @@
+ // uses FFTs over the whole of a[], so it's slow.
+ // and the results are crummy at the start and end.
+ //
+-std::vector<double>
+-iq2usb(const std::vector<std::complex<double>> &a)
++std::vector<float>
++iq2usb(const std::vector<std::complex<float>> &a)
+ {
+ #if 0
+   int slop = 10000;
+-  std::vector<std::complex<double>> a(aa.size() + 2*slop);
++  std::vector<std::complex<float>> a(aa.size() + 2*slop);
+   for(int i = 0; i < (int)a.size(); i++){
+     if(i - slop >= 0 && i - slop < (int) aa.size()){
+       a[i] = aa[i-slop];
+@@ -397,9 +397,9 @@
+   }
+ #endif
+   
+-  std::vector<double> ii = vreal(analytic(vreal(a), "snd::iq2usb_i"));
+-  std::vector<double> qq = vimag(analytic(vimag(a), "snd::iq2usb_q"));
+-  std::vector<double> ssb(ii.size());
++  std::vector<float> ii = vreal(analytic(vreal(a), "snd::iq2usb_i"));
++  std::vector<float> qq = vimag(analytic(vimag(a), "snd::iq2usb_q"));
++  std::vector<float> ssb(ii.size());
+   for(int i = 0; i < (int) ii.size(); i++){
+     ssb[i] = ii[i] - qq[i];
+   }
+@@ -422,7 +422,7 @@
+ AirspySoundIn::AirspySoundIn(std::string chan, int rate)
+ {
+   device_ = 0;
+-  //hz_ = 1000000.0 * atof(chan.c_str());
++  //hz_ = 1000000.0f * strtof(chan.c_str(), NULL);
+   hz_ = 10 * 1000 * 1000;
+   air_rate_ = 192 * 1000;;
+   time_ = -1;
+@@ -439,7 +439,7 @@
+ 
+   int comma = chan.find(",");
+   if(comma >= 0){
+-    hz_ = atof(chan.c_str() + comma + 1) * 1000000.0;
++    hz_ = strtof(chan.c_str() + comma + 1, NULL) * 1000000.0f;
+   }
+ 
+   if(comma == 0 || chan.size() < 1 || chan[0] == '-'){
+@@ -479,16 +479,16 @@
+ 
+   // allocate a 60-second circular buffer
+   n_ = rate_ * 60;
+-  buf_ = (std::complex<double> *) malloc(sizeof(std::complex<double>) * n_);
++  buf_ = (std::complex<float> *) malloc(sizeof(std::complex<float>) * n_);
+   assert(buf_);
+   wi_ = 0;
+   ri_ = 0;
+ 
+   // Liquid DSP filter + resampler to convert 192000 to 6000.
+-  int h_len = estimate_req_filter_len(0.01, 60.0);
++  int h_len = estimate_req_filter_len(0.01f, 60.0f);
+   float h[h_len];
+-  double cutoff = (rate_ / (double) air_rate_) / 2.0;
+-  liquid_firdes_kaiser(h_len, cutoff, 60.0, 0.0, h);
++  float cutoff = (rate_ / (float) air_rate_) / 2.0f;
++  liquid_firdes_kaiser(h_len, cutoff, 60.0f, 0.0f, h);
+ 
+   assert((air_rate_ % rate_) == 0);
+   filter_ = firfilt_crcf_create(h, h_len);
+@@ -556,7 +556,7 @@
+     fprintf(stderr, "airspy %s %llx (%.3f MHz) dropped_samples %d, sample_count %d\n",
+             hostname_,
+             serial_,
+-            hz_ / 1000000.0,
++            hz_ / 1000000.0f,
+             (int)transfer->dropped_samples,
+             (int)transfer->sample_count);
+   }
+@@ -583,7 +583,7 @@
+     }
+ 
+     if(fp){
+-      double dd;
++      float dd;
+       dd = x.real;
+       fwrite(&dd, sizeof(dd), 1, fp);
+       dd = x.imag;
+@@ -596,7 +596,7 @@
+     if((count_ % (air_rate_ / rate_)) == 0){
+       if(((wi_ + 1) % n_) != ri_){
+         // XXX what is the range of buf[i].re? 0..1?
+-        buf_[wi_] = std::complex<double>(y.real, y.imag);
++        buf_[wi_] = std::complex<float>(y.real, y.imag);
+         wi_ = (wi_ + 1) % n_;
+       } else {
+ #if 0
+@@ -617,10 +617,10 @@
+ }
+ 
+ // UNIX time of first sample in t0.
+-std::vector<double>
+-AirspySoundIn::get(int n, double &t0, int latest)
++std::vector<float>
++AirspySoundIn::get(int n, float &t0, int latest)
+ {
+-  std::vector<double> nothing;
++  std::vector<float> nothing;
+ 
+   if(time_ < 0 && wi_ == ri_){
+     // no input has ever arrived.
+@@ -638,12 +638,12 @@
+   // XXX there's a race here with cb().
+   t0 = time_; // time of last sample in buf_.
+   if(wi_ >= ri_){
+-    t0 -= (wi_ - ri_) * (1.0 / rate_);
++    t0 -= (wi_ - ri_) * (1.0f / rate_);
+   } else {
+-    t0 -= ((wi_ + n_) - ri_) * (1.0 / rate_);
++    t0 -= ((wi_ + n_) - ri_) * (1.0f / rate_);
+   }
+ 
+-  std::vector<std::complex<double>> v1;
++  std::vector<std::complex<float>> v1;
+   while((int) v1.size() < n){
+     if(ri_ == wi_){
+       break;
+@@ -668,9 +668,9 @@
+     }
+     int needed = quantum - (olen % quantum);
+     if(needed != quantum){
+-      v1.resize(v1.size() + needed, 0.0);
++      v1.resize(v1.size() + needed, 0.0f);
+     }
+-    std::vector<double> v2 = iq2usb(v1);
++    std::vector<float> v2 = iq2usb(v1);
+     if((int) v2.size() > olen){
+       v2.resize(olen);
+     }
+@@ -683,19 +683,18 @@
+ void
+ eval_filter(float h[], int h_len, int rate)
+ {
+-  for(double hz = 4000; hz < rate / 2 && hz < 8000; hz += 20){
++  for(float hz = 4000; hz < rate / 2 && hz < 8000; hz += 20){
+     firfilt_crcf ff = firfilt_crcf_create(h, h_len);
+-    double phase = 0;
+-    double sum = 0;
++    float phase = 0;
++    float sum = 0;
+     int nn = 100 * h_len;
+     for(int i = 0; i < nn; i++){
+       liquid_float_complex x, y;
+-      x.real = cos(phase);
+-      x.imag = sin(phase);
+-      phase += hz * 2 * M_PI / rate;
++      sincosf(phase, &x.imag, &x.real);
++      phase += hz * 2 * M_PIf / rate;
+       firfilt_crcf_push(ff, x);
+       firfilt_crcf_execute(ff, &y);
+-      sum += sqrt(y.real*y.real + y.imag*y.imag);
++      sum += sqrtf(y.real*y.real + y.imag*y.imag);
+     }
+     sum /= nn;
+     printf("%.1f %f\n", hz, sum);
+@@ -713,7 +712,7 @@
+ 
+   int comma = chan.find(",");
+   if(comma >= 0){
+-    hz_ = atof(chan.c_str() + comma + 1) * 1000000.0;
++    hz_ = strtof(chan.c_str() + comma + 1, NULL) * 1000000.0f;
+   } else {
+     fprintf(stderr, "HPSDR needs chan IPAddress,MHz or just ,MHz\n");
+     exit(1);
+@@ -752,7 +751,7 @@
+ void
+ HPSDRSoundIn::absorb()
+ {
+-  std::vector<std::complex<double>> v;
++  std::vector<std::complex<float>> v;
+ 
+   sdr_->get(unit_, v);
+   if(v.size() == 0)
+@@ -762,7 +761,7 @@
+     FILE *fp = fopen("hpsdr.dat", "a");
+     assert(fp);
+     for(int i = 0; i < (int) v.size(); i++){
+-      double x = v[i].real();
++      float x = v[i].real();
+       fwrite(&x, sizeof(x), 1, fp);
+       x = v[i].imag();
+       fwrite(&x, sizeof(x), 1, fp);
+@@ -785,8 +784,8 @@
+ // sample rate has already been reduced (e.g. from 48000 to 12000).
+ // modifies v1[].
+ //
+-std::vector<double>
+-HPSDRSoundIn::usb(std::vector<std::complex<double>> &v1)
++std::vector<float>
++HPSDRSoundIn::usb(std::vector<std::complex<float>> &v1)
+ {
+   if(v1.size() < 2){
+     // analytic() demands more than one sample.
+@@ -804,9 +803,9 @@
+     }
+     int needed = quantum - (olen % quantum);
+     if(needed != quantum){
+-      v1.resize(v1.size() + needed, 0.0);
++      v1.resize(v1.size() + needed, 0.0f);
+     }
+-    std::vector<double> v2 = iq2usb(v1);
++    std::vector<float> v2 = iq2usb(v1);
+     if((int) v2.size() > olen){
+       v2.resize(olen);
+     }
+@@ -817,8 +816,8 @@
+ //
+ // return I/Q samples.
+ //
+-std::vector<std::complex<double>>
+-HPSDRSoundIn::get_iq(int n, double &t0, int latest)
++std::vector<std::complex<float>>
++HPSDRSoundIn::get_iq(int n, float &t0, int latest)
+ {
+   // read and rate-reduce HPSDR input, place in buf_.
+   absorb();
+@@ -826,7 +825,7 @@
+   if(time_ < 0 && buf_.size() == 0){
+     // no input has ever arrived.
+     t0 = -1;
+-    return std::vector<std::complex<double>>();
++    return std::vector<std::complex<float>>();
+   }
+ 
+   if(latest && (int) buf_.size() > n){
+@@ -834,10 +833,10 @@
+   }
+ 
+   // time of first sample in buf_.
+-  t0 = time_ - buf_.size() / (double) rate_;
++  t0 = time_ - buf_.size() / (float) rate_;
+ 
+   int nn = std::min(n, (int) buf_.size());
+-  std::vector<std::complex<double>> v1(buf_.begin(), buf_.begin() + nn);
++  std::vector<std::complex<float>> v1(buf_.begin(), buf_.begin() + nn);
+   buf_.erase(buf_.begin(), buf_.begin() + nn);
+ 
+   return v1;
+@@ -853,15 +852,15 @@
+ // and discard any earlier samples.
+ // converts from I/Q to upper sideband.
+ //
+-std::vector<double>
+-HPSDRSoundIn::get(int n, double &t0, int latest)
++std::vector<float>
++HPSDRSoundIn::get(int n, float &t0, int latest)
+ {
+-  std::vector<std::complex<double>> v1 = get_iq(n, t0, latest);
++  std::vector<std::complex<float>> v1 = get_iq(n, t0, latest);
+   if(v1.size() == 0){
+-    std::vector<double> nothing;
++    std::vector<float> nothing;
+     return nothing;
+   }
+-  std::vector<double> rrr = usb(v1);
++  std::vector<float> rrr = usb(v1);
+   return rrr;
+ }
+ #endif
+@@ -891,10 +890,10 @@
+ // if latest==1, return (up to) the most recent n samples
+ // and discard any earlier samples.
+ //
+-std::vector<double>
+-CloudSoundIn::get(int n, double &t0, int latest)
++std::vector<float>
++CloudSoundIn::get(int n, float &t0, int latest)
+ {
+-  double lastt;
++  float lastt;
+   std::vector<short> v0 = sdr_->get(lastt);
+ 
+   int skip = 0;
+@@ -908,12 +907,12 @@
+     assert(0);
+   }
+ 
+-  std::vector<double> v1(v0.size() - skip);
++  std::vector<float> v1(v0.size() - skip);
+   for(int i = 0; i < (int) v1.size(); i++){
+     v1[i] = v0[i+skip];
+   }
+   
+-  t0 = lastt - (v1.size() / (double) rate());
++  t0 = lastt - (v1.size() / (float) rate());
+   return v1;
+ }
+ 
+@@ -946,7 +945,7 @@
+ void
+ SDRIPSoundIn::absorb()
+ {
+-  std::vector<std::complex<double>> v;
++  std::vector<std::complex<float>> v;
+ 
+   sdr_->get(v);
+   if(v.size() == 0)
+@@ -967,8 +966,8 @@
+ // (sdrip.cc has already reduced the rate (if needed).)
+ // modifies v1[].
+ //
+-std::vector<double>
+-SDRIPSoundIn::usb(std::vector<std::complex<double>> &v1)
++std::vector<float>
++SDRIPSoundIn::usb(std::vector<std::complex<float>> &v1)
+ {
+   if(v1.size() < 2){
+     // analytic() demands more than one sample.
+@@ -986,9 +985,9 @@
+     }
+     int needed = quantum - (olen % quantum);
+     if(needed != quantum){
+-      v1.resize(v1.size() + needed, 0.0);
++      v1.resize(v1.size() + needed, 0.0f);
+     }
+-    std::vector<double> v2 = iq2usb(v1);
++    std::vector<float> v2 = iq2usb(v1);
+     if((int) v2.size() > olen){
+       v2.resize(olen);
+     }
+@@ -999,8 +998,8 @@
+ //
+ // return I/Q samples.
+ //
+-std::vector<std::complex<double>>
+-SDRIPSoundIn::get_iq(int n, double &t0, int latest)
++std::vector<std::complex<float>>
++SDRIPSoundIn::get_iq(int n, float &t0, int latest)
+ {
+   // read waiting SDRIP input, place in buf_.
+   absorb();
+@@ -1008,7 +1007,7 @@
+   if(time_ < 0 && buf_.size() == 0){
+     // no input has ever arrived.
+     t0 = -1;
+-    return std::vector<std::complex<double>>();
++    return std::vector<std::complex<float>>();
+   }
+ 
+   if(latest && (int) buf_.size() > n){
+@@ -1016,10 +1015,10 @@
+   }
+ 
+   // time of first sample in buf_.
+-  t0 = time_ - buf_.size() / (double) rate_;
++  t0 = time_ - buf_.size() / (float) rate_;
+ 
+   int nn = std::min(n, (int) buf_.size());
+-  std::vector<std::complex<double>> v1(buf_.begin(), buf_.begin() + nn);
++  std::vector<std::complex<float>> v1(buf_.begin(), buf_.begin() + nn);
+   buf_.erase(buf_.begin(), buf_.begin() + nn);
+ 
+   return v1;
+@@ -1034,15 +1033,15 @@
+ // if latest==1, return (up to) the most recent n samples
+ // and discard any earlier samples.
+ //
+-std::vector<double>
+-SDRIPSoundIn::get(int n, double &t0, int latest)
++std::vector<float>
++SDRIPSoundIn::get(int n, float &t0, int latest)
+ {
+-  std::vector<std::complex<double>> v1 = get_iq(n, t0, latest);
++  std::vector<std::complex<float>> v1 = get_iq(n, t0, latest);
+   if(v1.size() == 0){
+-    std::vector<double> nothing;
++    std::vector<float> nothing;
+     return nothing;
+   }
+-  std::vector<double> rrr = usb(v1);
++  std::vector<float> rrr = usb(v1);
+   return rrr;
+ }
+ 
+@@ -1092,7 +1091,7 @@
+ }
+ 
+ void
+-HPSDRSoundOut::write(const std::vector<double> &v)
++HPSDRSoundOut::write(const std::vector<float> &v)
+ {
+   sdr_->tx_real(hz_, v, rate_);
+ }
+@@ -1156,11 +1155,11 @@
+ }
+ 
+ void
+-CardSoundOut::write(const std::vector<double> &v)
++CardSoundOut::write(const std::vector<float> &v)
+ {
+   std::vector<short int> vv(v.size());
+   for(int i = 0; i < (int) v.size(); i++){
+-    if(v[i] > 1.0){
++    if(v[i] > 1.0f){
+       fprintf(stderr, "CardSoundOut::write() oops %f\n", v[i]);
+     }
+     vv[i] = v[i] * 16380;
+@@ -1174,11 +1173,11 @@
+ 
+ extern "C" {
+   void *ext_snd_in_open(const char *card, const char *chan, int rate);
+-  int ext_snd_in_read(void *, double *, int, double *);
++  int ext_snd_in_read(void *, float *, int, float *);
+   int ext_snd_in_freq(void *, int);
+   void *ext_snd_out_open(const char *card, const char *chan, int rate);
+   int ext_snd_out_freq(void *, int);
+-  void ext_snd_out_write(void *, double *, int);
++  void ext_snd_out_write(void *, float *, int);
+ }
+ 
+ void *
+@@ -1196,10 +1195,10 @@
+ // return value is number of samples written to out[].
+ //
+ int
+-ext_snd_in_read(void *thing, double *out, int maxout, double *tm)
++ext_snd_in_read(void *thing, float *out, int maxout, float *tm)
+ {
+   SoundIn *sin = (SoundIn *) thing;
+-  double t0; // time of first sample.
++  float t0; // time of first sample.
+ 
+   // the "1" argument to get() means return the latest maxout samples,
+   // and discard samples older than that!
+@@ -1207,23 +1206,23 @@
+   int n;
+   if(sin->has_iq()){
+     // return I/Q pairs.
+-    std::vector<std::complex<double>> v = sin->get_iq(maxout / 2, t0, 1);
++    std::vector<std::complex<float>> v = sin->get_iq(maxout / 2, t0, 1);
+     assert((int)v.size()*2 <= maxout);
+     for(int i = 0; i*2 < maxout && i < (int) v.size(); i++){
+       out[i*2+0] = v[i].real();
+       out[i*2+1] = v[i].imag();
+     }
+-    *tm = t0 + v.size() * (1.0 / sin->rate()); // time of last sample.
++    *tm = t0 + v.size() * (1.0f / sin->rate()); // time of last sample.
+     n = v.size() * 2;
+   } else {
+     // return ordinary audio samples.
+-    std::vector<double> v = sin->get(maxout, t0, 1);
++    std::vector<float> v = sin->get(maxout, t0, 1);
+ 
+     assert((int) v.size() <= maxout);
+     for(int i = 0; i < maxout && i < (int) v.size(); i++){
+       out[i] = v[i];
+     }
+-    *tm = t0 + v.size() / (double)sin->rate(); // time of last sample.
++    *tm = t0 + v.size() / (float)sin->rate(); // time of last sample.
+     n = v.size();
+   }
+ 
+@@ -1258,9 +1257,9 @@
+ }
+ 
+ void
+-ext_snd_out_write(void *thing, double *buf, int n)
++ext_snd_out_write(void *thing, float *buf, int n)
+ {
+   SoundOut *sout = (SoundOut *) thing;
+-  std::vector<double> v(buf, buf + n);
++  std::vector<float> v(buf, buf + n);
+   sout->write(v);
+ }
+diff -Nuar fate-origin_main.orig/snd.h fate-origin_main/snd.h
+--- fate-origin_main.orig/snd.h	2022-02-10 17:01:24.000000000 -0500
++++ fate-origin_main/snd.h	2025-07-19 09:25:39.868886096 -0400
+@@ -28,9 +28,9 @@
+ public:
+   virtual void start() = 0;
+   virtual int rate() = 0;
+-  virtual std::vector<double> get(int n, double &t0, int latest) = 0;
++  virtual std::vector<float> get(int n, float &t0, int latest) = 0;
+   virtual bool has_iq() { return false; } // default
+-  virtual std::vector<std::complex<double>> get_iq(int n, double &t0, int latest) {
++  virtual std::vector<std::complex<float>> get_iq(int n, float &t0, int latest) {
+     assert(0);
+   }
+   void levels();
+@@ -46,8 +46,8 @@
+   int rate_;
+   int channels_;
+   int format_; // paInt16 or paInt32
+-  double dt_; // time difference (seconds) between UNIX and stream time
+-  double last_clip_;
++  float dt_; // time difference (seconds) between UNIX and stream time
++  float last_clip_;
+   int nclip_;
+ 
+   // circular buffer
+@@ -55,12 +55,12 @@
+   volatile int *buf_;
+   volatile int wi_;
+   volatile int ri_;
+-  volatile double time_; // of most recent sample, buf_[wi_-1]
++  volatile float time_; // of most recent sample, buf_[wi_-1]
+ 
+  public:
+   CardSoundIn(int card, int chan, int rate);
+   void start();
+-  std::vector<double> get(int n, double &t0, int latest);
++  std::vector<float> get(int n, float &t0, int latest);
+   int rate() { return rate_; }
+ 
+   static int cb(const void *input,
+@@ -74,9 +74,9 @@
+ class FileSoundIn : public SoundIn {
+ private:
+   int rate_;
+-  std::vector<double> samples_;
++  std::vector<float> samples_;
+   int i_;
+-  double t_; // unix time of samples_[i_];
++  float t_; // unix time of samples_[i_];
+ public:
+   FileSoundIn(std::string filename, int rate) {
+     samples_ = readwav(filename.c_str(), rate_);
+@@ -91,15 +91,15 @@
+   bool is_file() { return true; }
+   int rate() { return rate_; }
+   void start() { };
+-  std::vector<double> get(int n, double &t0, int latest) {
++  std::vector<float> get(int n, float &t0, int latest) {
+     t0 = t_;
+ 
+-    std::vector<double> v;
++    std::vector<float> v;
+     for(int j = 0; j < n; j++){
+       if (i_ < (int) samples_.size()){
+         v.push_back(samples_[i_]);
+         i_ += 1;
+-        t_ += 1 / (double) rate_;
++        t_ += 1 / (float) rate_;
+       } else {
+         break;
+       }
+@@ -121,7 +121,7 @@
+   unsigned int hz_;
+   int air_rate_; // 192000
+   int rate_; // 12000
+-  double time_; // of most recent sample, buf_[wi_-1]
++  float time_; // of most recent sample, buf_[wi_-1]
+   long long count_; // of samples, for rate reduction.
+   char hostname_[64];
+ 
+@@ -129,7 +129,7 @@
+ 
+   // circular buffer
+   int n_;
+-  std::complex<double> *buf_;
++  std::complex<float> *buf_;
+   volatile int wi_;
+   volatile int ri_;
+ 
+@@ -139,7 +139,7 @@
+   AirspySoundIn(std::string chan, int rate);
+   ~AirspySoundIn() { firfilt_crcf_destroy(filter_); }
+   void start();
+-  std::vector<double> get(int n, double &t0, int latest);
++  std::vector<float> get(int n, float &t0, int latest);
+   int rate() { return rate_; }
+   int set_freq(int);
+ 
+@@ -157,21 +157,21 @@
+   int hz_;
+ 
+   // buffered input.
+-  std::vector<std::complex<double>> buf_;
+-  double time_; // of most recent sample, buf_[wi_-1]
++  std::vector<std::complex<float>> buf_;
++  float time_; // of most recent sample, buf_[wi_-1]
+ 
+   void absorb();
+ 
+ public:
+-  std::vector<double> usb(std::vector<std::complex<double>> &v1);
++  std::vector<float> usb(std::vector<std::complex<float>> &v1);
+ 
+ public:
+   HPSDRSoundIn(std::string chan, int rate);
+   ~HPSDRSoundIn();
+   void start();
+-  std::vector<double> get(int n, double &t0, int latest);
++  std::vector<float> get(int n, float &t0, int latest);
+   bool has_iq() { return true; }
+-  std::vector<std::complex<double>> get_iq(int n, double &t0, int latest);
++  std::vector<std::complex<float>> get_iq(int n, float &t0, int latest);
+   int rate() { return rate_; }
+   int set_freq(int);
+   HPSDR *sdr() { return sdr_; }
+@@ -187,7 +187,7 @@
+  public:
+   CloudSoundIn(std::string chan, int rate);
+   void start();
+-  std::vector<double> get(int n, double &t0, int latest);
++  std::vector<float> get(int n, float &t0, int latest);
+   int rate() { return 8000; }
+   int set_freq(int);
+ };
+@@ -199,20 +199,20 @@
+   std::string chan_;
+   SDRIP *sdr_;
+   int rate_; // desired rate
+-  std::vector<std::complex<double>> buf_;
+-  double time_; // of most recent sample, buf_[wi_-1]
++  std::vector<std::complex<float>> buf_;
++  float time_; // of most recent sample, buf_[wi_-1]
+ 
+-  std::vector<double> usb(std::vector<std::complex<double>> &v1);
++  std::vector<float> usb(std::vector<std::complex<float>> &v1);
+   void absorb();
+ 
+  public:
+   SDRIPSoundIn(std::string chan, int rate);
+   void start();
+-  std::vector<double> get(int n, double &t0, int latest);
++  std::vector<float> get(int n, float &t0, int latest);
+   bool has_iq() { return true; }
+   int rate() { return rate_; }
+   int set_freq(int);
+-  std::vector<std::complex<double>> get_iq(int n, double &t0, int latest);
++  std::vector<std::complex<float>> get_iq(int n, float &t0, int latest);
+ };
+ #endif
+ 
+@@ -220,7 +220,7 @@
+ public:
+   virtual void start() = 0;
+   virtual int rate() = 0;
+-  virtual void write(const std::vector<double> &v) = 0;
++  virtual void write(const std::vector<float> &v) = 0;
+   virtual void set_freq(int hz) { }
+   static SoundOut *open(const std::string card, const std::string chan, int rate);
+ };
+@@ -236,7 +236,7 @@
+   void start();
+   int rate() { return rate_; }
+   void write(const std::vector<short int> &);
+-  void write(const std::vector<double> &);
++  void write(const std::vector<float> &);
+ };
+ 
+ #ifdef USE_HPSDR
+@@ -250,7 +250,7 @@
+   HPSDRSoundOut(const std::string chan, int rate);
+   void start();
+   int rate() { return rate_; }
+-  void write(const std::vector<double> &);
++  void write(const std::vector<float> &);
+   void set_freq(int hz) { hz_ = hz; }
+ };
+ #endif
+diff -Nuar fate-origin_main.orig/util.cc fate-origin_main/util.cc
+--- fate-origin_main.orig/util.cc	2022-02-10 17:01:24.000000000 -0500
++++ fate-origin_main/util.cc	2025-07-19 10:19:13.366905498 -0400
+@@ -6,24 +6,24 @@
+ #include <complex>
+ #include "util.h"
+ 
+-double
++float
+ now()
+ {
+   struct timeval tv;
+   gettimeofday(&tv, 0);
+-  return tv.tv_sec + tv.tv_usec / 1000000.0;
++  return tv.tv_sec + tv.tv_usec / 1000000.0f;
+ }
+ 
+ void
+-writewav(const std::vector<double> &samples, const char *filename, int rate)
++writewav(const std::vector<float> &samples, const char *filename, int rate)
+ {
+-  double mx = 0;
++  float mx = 0;
+   for(ulong i = 0; i < samples.size(); i++){
+     mx = std::max(mx, std::abs(samples[i]));
+   }
+-  std::vector<double> v(samples.size());
++  std::vector<float> v(samples.size());
+   for(ulong i = 0; i < samples.size(); i++){
+-    v[i] = (samples[i] / mx) * 0.95;
++    v[i] = (samples[i] / mx) * 0.95f;
+   }
+ 
+   SF_INFO sf;
+@@ -32,12 +32,12 @@
+   sf.format = SF_FORMAT_WAV | SF_FORMAT_PCM_16;
+   SNDFILE *f = sf_open(filename, SFM_WRITE, &sf);
+   assert(f);
+-  sf_write_double(f, v.data(), v.size());
++  sf_write_float(f, v.data(), v.size());
+   sf_write_sync(f);
+   sf_close(f);
+ }
+ 
+-std::vector<double>
++std::vector<float>
+ readwav(const char *filename, int &rate_out)
+ {
+   SF_INFO info;
+@@ -49,11 +49,11 @@
+   }
+   rate_out = info.samplerate;
+ 
+-  std::vector<double> out;
++  std::vector<float> out;
+ 
+   while(1){
+-    double buf[512];
+-    int n = sf_read_double(sf, buf, 512);
++    float buf[512];
++    int n = sf_read_float(sf, buf, 512);
+     if(n <= 0)
+       break;
+     for(int i = 0; i < n; i++){
+@@ -67,7 +67,7 @@
+ }
+ 
+ void
+-writetxt(std::vector<double> v, const char *filename)
++writetxt(std::vector<float> v, const char *filename)
+ {
+   FILE *fp = fopen(filename, "w");
+   if(fp == 0){
+@@ -84,42 +84,42 @@
+ // Goertzel Algorithm for a Non-integer Frequency Index, Rick Lyons
+ // https://www.dsprelated.com/showarticle/495.php
+ //
+-std::complex<double>
+-goertzel(std::vector<double> v, int rate, int i0, int n, double hz)
++std::complex<float>
++goertzel(std::vector<float> v, int rate, int i0, int n, float hz)
+ {
+-  //double radians_per_sample = (hz * 2 * M_PI) / rate;
+-  //double k = radians_per_sample * n;
+-  double bin_hz = rate / (double) n;
+-  double k = hz / bin_hz;
+-
+-  double alpha = 2 * M_PI * k / n;
+-  double beta = 2 * M_PI * k * (n - 1.0) / n;
+-
+-  double two_cos_alpha = 2 * cos(alpha);
+-  double a = cos(beta);
+-  double b = -sin(beta);
+-  double c = sin(alpha) * sin(beta) - cos(alpha)*cos(beta);
+-  double d = sin(2 * M_PI * k);
++  //float radians_per_sample = (hz * 2 * M_PIf) / rate;
++  //float k = radians_per_sample * n;
++  float bin_hz = rate / (float) n;
++  float k = hz / bin_hz;
++
++  float alpha = 2 * M_PIf * k / n;
++  float beta = 2 * M_PIf * k * (n - 1.0f) / n;
++
++  float two_cos_alpha = 2 * cosf(alpha);
++  float a = cosf(beta);
++  float b = -sinf(beta);
++  float c = sinf(alpha) * sinf(beta) - cosf(alpha)*cosf(beta);
++  float d = sinf(2 * M_PIf * k);
+ 
+-  double w1 = 0;
+-  double w2 = 0;
++  float w1 = 0;
++  float w2 = 0;
+ 
+   for(int i = 0; i < n; i++){
+-    double w0 = v[i0+i] + two_cos_alpha * w1 - w2;
++    float w0 = v[i0+i] + two_cos_alpha * w1 - w2;
+     w2 = w1;
+     w1 = w0;
+   }
+ 
+-  double re = w1*a + w2*c;
+-  double im = w1*b + w2*d;
++  float re = w1*a + w2*c;
++  float im = w1*b + w2*d;
+ 
+-  return std::complex<double>(re, im);
++  return std::complex<float>(re, im);
+ }
+ 
+-double
+-vmax(const std::vector<double> &v)
++float
++vmax(const std::vector<float> &v)
+ {
+-  double mx = 0;
++  float mx = 0;
+   int got = 0;
+   for(int i = 0; i < (int) v.size(); i++){
+     if(got == 0 || v[i] > mx){
+@@ -130,10 +130,10 @@
+   return mx;
+ }
+ 
+-std::complex<double>
+-cvmax(const std::vector<std::complex<double>> &v)
++std::complex<float>
++cvmax(const std::vector<std::complex<float>> &v)
+ {
+-  std::complex<double> mx(0, 0);
++  std::complex<float> mx(0, 0);
+   int got = 0;
+   for(int i = 0; i < (int) v.size(); i++){
+     if(got == 0 || std::abs(v[i]) > std::abs(mx)){
+@@ -144,20 +144,20 @@
+   return mx;
+ }
+ 
+-std::vector<double>
+-vreal(const std::vector<std::complex<double>> &a)
++std::vector<float>
++vreal(const std::vector<std::complex<float>> &a)
+ {
+-  std::vector<double> b(a.size());
++  std::vector<float> b(a.size());
+   for(int i = 0; i < (int) a.size(); i++){
+     b[i] = a[i].real();
+   }
+   return b;
+ }
+ 
+-std::vector<double>
+-vimag(const std::vector<std::complex<double>> &a)
++std::vector<float>
++vimag(const std::vector<std::complex<float>> &a)
+ {
+-  std::vector<double> b(a.size());
++  std::vector<float> b(a.size());
+   for(int i = 0; i < (int) a.size(); i++){
+     b[i] = a[i].imag();
+   }
+@@ -168,17 +168,17 @@
+ // 200 samples/second, 32 samples/symbol.
+ // used as reference to detect pairs of symbols.
+ // superseded by gfsk().
+-std::vector<std::complex<double>>
++std::vector<std::complex<float>>
+ fsk_c(const std::vector<int> &syms)
+ {
+   int n = syms.size();
+-  std::vector<std::complex<double>> v(n*32);
+-  double theta = 0;
++  std::vector<std::complex<float>> v(n*32);
++  float theta = 0;
+   for(int si = 0; si < n; si++){
+-    double hz = 25 + syms[si] * 6.25;
++    float hz = 25 + syms[si] * 6.25f;
+     for(int i = 0; i < 32; i++){
+-      v[si*32+i] = std::complex(cos(theta), sin(theta));
+-      theta += 2 * M_PI / (200 / hz);
++      v[si*32+i] = std::complex(cosf(theta), sinf(theta));
++      theta += 2 * M_PIf / (200 / hz);
+     }
+   }
+   return v;
+@@ -186,11 +186,11 @@
+ 
+ // copied from wsjt-x ft2/gfsk_pulse.f90.
+ // b is 1.0 for FT4; 2.0 for FT8. 
+-double
+-gfsk_point(double b, double t)
++float
++gfsk_point(float b, float t)
+ {
+-  double c = M_PI * sqrt(2.0 / log(2.0));
+-  double x = 0.5 * (erf(c * b * (t + 0.5)) - erf(c * b * (t - 0.5)));
++  float c = M_PIf * sqrtf(2.0f / log(2.0f));
++  float x = 0.5f * (erff(c * b * (t + 0.5f)) - erff(c * b * (t - 0.5f)));
+   return x;
+ }
+ 
+@@ -200,15 +200,15 @@
+ // three symbols wide.
+ // most of the pulse is in the center symbol.
+ // b is 1.0 for FT4; 2.0 for FT8. 
+-std::vector<double>
+-gfsk_window(int samples_per_symbol, double b)
++std::vector<float>
++gfsk_window(int samples_per_symbol, float b)
+ {
+-  std::vector<double> v(3 * samples_per_symbol);
+-  double sum = 0;
++  std::vector<float> v(3 * samples_per_symbol);
++  float sum = 0;
+   for(int i = 0; i < (int) v.size(); i++){
+-    double x = i / (double)samples_per_symbol;
+-    x -= 1.5;
+-    double y = gfsk_point(b, x);
++    float x = i / (float)samples_per_symbol;
++    x -= 1.5f;
++    float y = gfsk_point(b, x);
+     v[i] = y;
+     sum += y;
+   }
+@@ -225,27 +225,27 @@
+ // so that the transitions between symbols don't
+ // cause clicks.
+ // gwin is gfsk_window(32, 2.0)
+-std::vector<std::complex<double>>
++std::vector<std::complex<float>>
+ gfsk_c(const std::vector<int> &symbols,
+-     double hz0, double hz1,
+-     double spacing, int rate, int symsamples,
+-     double phase0,
+-     const std::vector<double> &gwin)
++     float hz0, float hz1,
++     float spacing, int rate, int symsamples,
++     float phase0,
++     const std::vector<float> &gwin)
+ {
+   assert((gwin.size() % 2) == 0);
+   
+   // compute frequency for each symbol.
+   // generate a spike in the middle of each symbol time;
+   // the gaussian filter will turn it into a waveform.
+-  std::vector<double> hzv(symsamples * (symbols.size() + 2), 0.0);
++  std::vector<float> hzv(symsamples * (symbols.size() + 2), 0.0f);
+   for(int bi = 0; bi < (int) symbols.size(); bi++){
+-    double base_hz = hz0 + (hz1 - hz0) * (bi / (double) symbols.size());
+-    double fr = base_hz + (symbols[bi] * spacing);
++    float base_hz = hz0 + (hz1 - hz0) * (bi / (float) symbols.size());
++    float fr = base_hz + (symbols[bi] * spacing);
+     int mid = symsamples*(bi+1) + symsamples/2;
+     // the window has even size, so split the impulse over
+     // the two middle samples to be symmetric.
+-    hzv[mid] = fr * symsamples / 2.0;
+-    hzv[mid-1] = fr * symsamples / 2.0;
++    hzv[mid] = fr * symsamples / 2.0f;
++    hzv[mid-1] = fr * symsamples / 2.0f;
+   }
+ 
+   // repeat first and last symbols
+@@ -257,9 +257,9 @@
+   // run the per-sample frequency vector through
+   // the gaussian filter.
+   int half = gwin.size() / 2;
+-  std::vector<double> o(hzv.size());
++  std::vector<float> o(hzv.size());
+   for(int i = 0; i < (int) o.size(); i++){
+-    double sum = 0;
++    float sum = 0;
+     for(int j = 0; j < (int) gwin.size(); j++){
+       int k = i - half + j;
+       if(k >= 0 && k < (int) hzv.size()){
+@@ -270,19 +270,19 @@
+   }
+ 
+   // drop repeated first and last symbols
+-  std::vector<double> oo(symsamples * symbols.size());
++  std::vector<float> oo(symsamples * symbols.size());
+   for(int i = 0; i < (int) oo.size(); i++){
+     oo[i] = o[i + symsamples];
+   }
+ 
+   // now oo[i] contains the frequency for the i'th sample.
+ 
+-  std::vector<std::complex<double>> v(symsamples * symbols.size());
+-  double theta = phase0;
++  std::vector<std::complex<float>> v(symsamples * symbols.size());
++  float theta = phase0;
+   for(int i = 0; i < (int) v.size(); i++){
+-    v[i] = std::complex(cos(theta), sin(theta));
+-    double hz = oo[i];
+-    theta += 2 * M_PI / (rate / hz);
++    v[i] = std::complex(cosf(theta), sinf(theta));
++    float hz = oo[i];
++    theta += 2 * M_PIf / (rate / hz);
+   }
+ 
+   return v;
+@@ -293,27 +293,27 @@
+ // so that the transitions between symbols don't
+ // cause clicks.
+ // gwin is gfsk_window(32, 2.0)
+-std::vector<double>
++std::vector<float>
+ gfsk_r(const std::vector<int> &symbols,
+-       double hz0, double hz1,
+-       double spacing, int rate, int symsamples,
+-       double phase0,
+-       const std::vector<double> &gwin)
++       float hz0, float hz1,
++       float spacing, int rate, int symsamples,
++       float phase0,
++       const std::vector<float> &gwin)
+ {
+   assert((gwin.size() % 2) == 0);
+   
+   // compute frequency for each symbol.
+   // generate a spike in the middle of each symbol time;
+   // the gaussian filter will turn it into a waveform.
+-  std::vector<double> hzv(symsamples * (symbols.size() + 2), 0.0);
++  std::vector<float> hzv(symsamples * (symbols.size() + 2), 0.0f);
+   for(int bi = 0; bi < (int) symbols.size(); bi++){
+-    double base_hz = hz0 + (hz1 - hz0) * (bi / (double) symbols.size());
+-    double fr = base_hz + (symbols[bi] * spacing);
++    float base_hz = hz0 + (hz1 - hz0) * (bi / (float) symbols.size());
++    float fr = base_hz + (symbols[bi] * spacing);
+     int mid = symsamples*(bi+1) + symsamples/2;
+     // the window has even size, so split the impulse over
+     // the two middle samples to be symmetric.
+-    hzv[mid] = fr * symsamples / 2.0;
+-    hzv[mid-1] = fr * symsamples / 2.0;
++    hzv[mid] = fr * symsamples / 2.0f;
++    hzv[mid-1] = fr * symsamples / 2.0f;
+   }
+ 
+   // repeat first and last symbols
+@@ -325,9 +325,9 @@
+   // run the per-sample frequency vector through
+   // the gaussian filter.
+   int half = gwin.size() / 2;
+-  std::vector<double> o(hzv.size());
++  std::vector<float> o(hzv.size());
+   for(int i = 0; i < (int) o.size(); i++){
+-    double sum = 0;
++    float sum = 0;
+     for(int j = 0; j < (int) gwin.size(); j++){
+       int k = i - half + j;
+       if(k >= 0 && k < (int) hzv.size()){
+@@ -338,19 +338,19 @@
+   }
+ 
+   // drop repeated first and last symbols
+-  std::vector<double> oo(symsamples * symbols.size());
++  std::vector<float> oo(symsamples * symbols.size());
+   for(int i = 0; i < (int) oo.size(); i++){
+     oo[i] = o[i + symsamples];
+   }
+ 
+   // now oo[i] contains the frequency for the i'th sample.
+ 
+-  std::vector<double> v(symsamples * symbols.size());
+-  double theta = phase0;
++  std::vector<float> v(symsamples * symbols.size());
++  float theta = phase0;
+   for(int i = 0; i < (int) v.size(); i++){
+-    v[i] = cos(theta);
+-    double hz = oo[i];
+-    theta += 2 * M_PI / (rate / hz);
++    v[i] = cosf(theta);
++    float hz = oo[i];
++    theta += 2 * M_PIf / (rate / hz);
+   }
+ 
+   return v;
+@@ -358,10 +358,8 @@
+ 
+ // how many seconds are we into the current
+ // 15-second cycle?
+-double
++float
+ cycle_second()
+ {
+-  double tt = now();
+-  double st = trunc(tt / 15.0) * 15;
+-  return tt - st;
++  return fmodf(now(), 15.0f);
+ }
+diff -Nuar fate-origin_main.orig/util.h fate-origin_main/util.h
+--- fate-origin_main.orig/util.h	2022-02-10 17:01:24.000000000 -0500
++++ fate-origin_main/util.h	2025-07-19 09:26:23.598247989 -0400
+@@ -4,30 +4,30 @@
+ #include <vector>
+ #include <complex>
+ 
+-double now();
+-void writewav(const std::vector<double> &samples, const char *filename, int rate);
+-std::vector<double> readwav(const char *filename, int &rate_out);
+-void writetxt(std::vector<double> v, const char *filename);
+-std::complex<double> goertzel(std::vector<double> v, int rate, int i0, int n, double hz);
+-double vmax(const std::vector<double> &v);
+-std::complex<double> cvmax(const std::vector<std::complex<double>> &v);
+-std::vector<double> vreal(const std::vector<std::complex<double>> &a);
+-std::vector<double> vimag(const std::vector<std::complex<double>> &a);
+-std::vector<std::complex<double>> gfsk_c(const std::vector<int> &symbols,
+-                                         double hz0, double hz1,
+-                                         double spacing, int rate, int symsamples,
+-                                         double phase0,
+-                                         const std::vector<double> &gwin);
+-std::vector<double> gfsk_r(const std::vector<int> &symbols,
+-                           double hz0, double hz1,
+-                           double spacing, int rate, int symsamples,
+-                           double phase0,
+-                           const std::vector<double> &gwin);
+-std::vector<double> gfsk_window(int samples_per_symbol, double b);
++float now();
++void writewav(const std::vector<float> &samples, const char *filename, int rate);
++std::vector<float> readwav(const char *filename, int &rate_out);
++void writetxt(std::vector<float> v, const char *filename);
++std::complex<float> goertzel(std::vector<float> v, int rate, int i0, int n, float hz);
++float vmax(const std::vector<float> &v);
++std::complex<float> cvmax(const std::vector<std::complex<float>> &v);
++std::vector<float> vreal(const std::vector<std::complex<float>> &a);
++std::vector<float> vimag(const std::vector<std::complex<float>> &a);
++std::vector<std::complex<float>> gfsk_c(const std::vector<int> &symbols,
++                                        float hz0, float hz1,
++                                        float spacing, int rate, int symsamples,
++                                        float phase0,
++                                        const std::vector<float> &gwin);
++std::vector<float> gfsk_r(const std::vector<int> &symbols,
++                          float hz0, float hz1,
++                          float spacing, int rate, int symsamples,
++                          float phase0,
++                          const std::vector<float> &gwin);
++std::vector<float> gfsk_window(int samples_per_symbol, float b);
+ 
+ typedef unsigned long ulong;
+ typedef unsigned int uint;
+ 
+-double cycle_second();
++float cycle_second();
+ 
+ #endif
