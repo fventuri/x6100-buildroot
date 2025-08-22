@@ -1,6 +1,213 @@
+diff -Nuar x6100-gui.orig/src/clock.c x6100-gui/src/clock.c
+--- x6100-gui.orig/src/clock.c	2025-07-02 05:28:15.000000000 -0400
++++ x6100-gui/src/clock.c	2025-08-21 08:28:32.565773364 -0400
+@@ -61,7 +61,7 @@
+     }
+ }
+ 
+-static void show_time() {
++static void show_time(lv_timer_t * timer) {
+     time_t      now;
+     struct tm   *t;
+ 
+@@ -151,7 +151,7 @@
+     set_state(CLOCK_TIME);
+     timeout = get_time() + params.clock_time_timeout * 1000;
+ 
+-    show_time();
++    show_time(NULL);
+     lv_timer_create(show_time, 500, NULL);
+ 
+     last_time_sync = get_last_sync_time();
+diff -Nuar x6100-gui.orig/src/dialog_callsign.c x6100-gui/src/dialog_callsign.c
+--- x6100-gui.orig/src/dialog_callsign.c	2025-07-02 05:28:15.000000000 -0400
++++ x6100-gui/src/dialog_callsign.c	2025-08-21 08:18:51.510205270 -0400
+@@ -68,12 +68,12 @@
+         subject_set_int(cfg.ft8_omit_cq_qth.val, false);
+     }
+     params_str_set(&params.callsign, callsign);
+-    dialog_destruct(&dialog);
++    dialog_destruct();
+     return true;
+ }
+ 
+ static bool edit_cancel() {
+-    dialog_destruct(&dialog);
++    dialog_destruct();
+     return true;
+ }
+ 
+@@ -104,12 +104,12 @@
+ 
+     switch (key) {
+         case LV_KEY_ESC:
+-            dialog_destruct(&dialog);
++            dialog_destruct();
+             break;
+ 
+         case LV_KEY_ENTER:
+             edit_ok();
+-            dialog_destruct(&dialog);
++            dialog_destruct();
+             break;
+ 
+         case KEY_VOL_LEFT_EDIT:
+diff -Nuar x6100-gui.orig/src/dialog_freq.c x6100-gui/src/dialog_freq.c
+--- x6100-gui.orig/src/dialog_freq.c	2025-07-02 05:28:15.000000000 -0400
++++ x6100-gui/src/dialog_freq.c	2025-08-21 08:18:22.497761549 -0400
+@@ -110,13 +110,13 @@
+ 
+         case LV_KEY_ESC:
+             voice_say_text_fmt("Frequency window has been closed");
+-            dialog_destruct(&dialog);
++            dialog_destruct();
+             break;
+ 
+         case HKEY_FINP:
+         case LV_KEY_ENTER:
+             enter_freq();
+-            dialog_destruct(&dialog);
++            dialog_destruct();
+             break;
+ 
+         case KEY_VOL_LEFT_EDIT:
+diff -Nuar x6100-gui.orig/src/dialog_ft8.c x6100-gui/src/dialog_ft8.c
+--- x6100-gui.orig/src/dialog_ft8.c	2025-07-02 05:28:15.000000000 -0400
++++ x6100-gui/src/dialog_ft8.c	2025-08-21 08:19:10.569153682 -0400
+@@ -490,7 +490,7 @@
+ 
+     switch (key) {
+         case LV_KEY_ESC:
+-            dialog_destruct(&dialog);
++            dialog_destruct();
+             break;
+ 
+         case KEY_VOL_LEFT_EDIT:
+diff -Nuar x6100-gui.orig/src/dialog_gps.c x6100-gui/src/dialog_gps.c
+--- x6100-gui.orig/src/dialog_gps.c	2025-07-02 05:28:15.000000000 -0400
++++ x6100-gui/src/dialog_gps.c	2025-08-21 08:20:21.557384533 -0400
+@@ -345,7 +345,7 @@
+ 
+     switch (key) {
+         case LV_KEY_ESC:
+-            dialog_destruct(&dialog);
++            dialog_destruct();
+             break;
+ 
+         case KEY_VOL_LEFT_EDIT:
+diff -Nuar x6100-gui.orig/src/dialog_msg_cw.c x6100-gui/src/dialog_msg_cw.c
+--- x6100-gui.orig/src/dialog_msg_cw.c	2025-07-02 05:28:15.000000000 -0400
++++ x6100-gui/src/dialog_msg_cw.c	2025-08-21 08:18:32.203244516 -0400
+@@ -208,7 +208,7 @@
+ 
+     switch (key) {
+         case LV_KEY_ESC:
+-            dialog_destruct(&dialog);
++            dialog_destruct();
+             break;
+ 
+         case KEYBOARD_F4:
+diff -Nuar x6100-gui.orig/src/dialog_msg_voice.c x6100-gui/src/dialog_msg_voice.c
+--- x6100-gui.orig/src/dialog_msg_voice.c	2025-07-02 05:28:15.000000000 -0400
++++ x6100-gui/src/dialog_msg_voice.c	2025-08-21 08:20:15.716123445 -0400
+@@ -456,7 +456,7 @@
+ 
+     switch (key) {
+         case LV_KEY_ESC:
+-            dialog_destruct(&dialog);
++            dialog_destruct();
+             break;
+ 
+         case KEY_VOL_LEFT_EDIT:
+diff -Nuar x6100-gui.orig/src/dialog_qth.c x6100-gui/src/dialog_qth.c
+--- x6100-gui.orig/src/dialog_qth.c	2025-07-02 05:28:15.000000000 -0400
++++ x6100-gui/src/dialog_qth.c	2025-08-21 08:19:34.578284682 -0400
+@@ -37,12 +37,12 @@
+         msg_update_text_fmt("Incorrect QTH Grid");
+     }
+ 
+-    dialog_destruct(&dialog);
++    dialog_destruct();
+     return true;
+ }
+ 
+ static bool edit_cancel() {
+-    dialog_destruct(&dialog);
++    dialog_destruct();
+     return true;
+ }
+ 
+@@ -74,12 +74,12 @@
+ 
+     switch (key) {
+         case LV_KEY_ESC:
+-            dialog_destruct(&dialog);
++            dialog_destruct();
+             break;
+ 
+         case LV_KEY_ENTER:
+             edit_ok();
+-            dialog_destruct(&dialog);
++            dialog_destruct();
+             break;
+ 
+         case KEY_VOL_LEFT_EDIT:
+diff -Nuar x6100-gui.orig/src/dialog_recorder.c x6100-gui/src/dialog_recorder.c
+--- x6100-gui.orig/src/dialog_recorder.c	2025-07-02 05:28:15.000000000 -0400
++++ x6100-gui/src/dialog_recorder.c	2025-08-21 08:35:34.500041972 -0400
+@@ -53,7 +53,7 @@
+ static void construct_cb(lv_obj_t *parent);
+ static void destruct_cb();
+ static void key_cb(lv_event_t * e);
+-static void load_btn_page();
++static void load_btn_page(void *);
+ 
+ static void update_level_cb(lv_timer_t * timer);
+ 
+@@ -357,7 +357,7 @@
+ 
+     switch (key) {
+         case LV_KEY_ESC:
+-            dialog_destruct(&dialog);
++            dialog_destruct();
+             break;
+ 
+         case KEY_VOL_LEFT_EDIT:
+@@ -437,6 +437,6 @@
+ }
+ 
+ 
+-static void load_btn_page() {
++static void load_btn_page(void *) {
+     buttons_load_page(&btn_page);
+ }
+diff -Nuar x6100-gui.orig/src/dialog_swrscan.c x6100-gui/src/dialog_swrscan.c
+--- x6100-gui.orig/src/dialog_swrscan.c	2025-07-02 05:28:15.000000000 -0400
++++ x6100-gui/src/dialog_swrscan.c	2025-08-21 08:19:17.376492430 -0400
+@@ -301,7 +301,7 @@
+ 
+     switch (key) {
+         case LV_KEY_ESC:
+-            dialog_destruct(&dialog);
++            dialog_destruct();
+             break;
+ 
+         case KEY_VOL_LEFT_EDIT:
+diff -Nuar x6100-gui.orig/src/dialog_wifi.c x6100-gui/src/dialog_wifi.c
+--- x6100-gui.orig/src/dialog_wifi.c	2025-07-02 05:28:15.000000000 -0400
++++ x6100-gui/src/dialog_wifi.c	2025-08-21 08:19:45.498772801 -0400
+@@ -229,7 +229,7 @@
+     switch (key) {
+ 
+     case LV_KEY_ESC:
+-        dialog_destruct(&dialog);
++        dialog_destruct();
+         break;
+ 
+     case KEY_VOL_LEFT_EDIT:
 diff -Nuar x6100-gui.orig/src/knobs.cpp x6100-gui/src/knobs.cpp
---- x6100-gui.orig/src/knobs.cpp	2025-06-26 04:59:53.000000000 -0400
-+++ x6100-gui/src/knobs.cpp	2025-06-27 07:34:28.584405113 -0400
+--- x6100-gui.orig/src/knobs.cpp	2025-07-02 05:28:15.000000000 -0400
++++ x6100-gui/src/knobs.cpp	2025-08-21 08:17:11.214866682 -0400
 @@ -15,6 +15,7 @@
  #include <string>
  #include <vector>
@@ -10,8 +217,8 @@ diff -Nuar x6100-gui.orig/src/knobs.cpp x6100-gui/src/knobs.cpp
  extern "C" {
      #include "styles.h"
 diff -Nuar x6100-gui.orig/src/scheduler.cpp x6100-gui/src/scheduler.cpp
---- x6100-gui.orig/src/scheduler.cpp	2025-06-26 04:59:53.000000000 -0400
-+++ x6100-gui/src/scheduler.cpp	2025-06-27 07:18:22.965107584 -0400
+--- x6100-gui.orig/src/scheduler.cpp	2025-07-02 05:28:15.000000000 -0400
++++ x6100-gui/src/scheduler.cpp	2025-08-21 08:17:11.215364083 -0400
 @@ -8,6 +8,7 @@
  
  #include "scheduler.h"
@@ -21,8 +228,8 @@ diff -Nuar x6100-gui.orig/src/scheduler.cpp x6100-gui/src/scheduler.cpp
  #include <mutex>
  
 diff -Nuar x6100-gui.orig/src/util.h x6100-gui/src/util.h
---- x6100-gui.orig/src/util.h	2025-06-26 04:59:53.000000000 -0400
-+++ x6100-gui/src/util.h	2025-06-27 07:23:34.080667276 -0400
+--- x6100-gui.orig/src/util.h	2025-07-02 05:28:15.000000000 -0400
++++ x6100-gui/src/util.h	2025-08-21 08:17:11.215744049 -0400
 @@ -9,6 +9,7 @@
  #pragma once
  

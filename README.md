@@ -7,8 +7,8 @@ External buildroot tree for the Xiegu X6100 transceiver.
 
 - download the latest stable release of buildroot and untar it:
 ```
-curl -O https://buildroot.org/downloads/buildroot-2025.05.tar.xz
-tar xJf buildroot-2025.05.tar.xz
+curl -O https://buildroot.org/downloads/buildroot-2025.08-rc2.tar.xz
+tar xJf buildroot-2025.08-rc2.tar.xz
 ```
 
 - clone this repository
@@ -19,7 +19,7 @@ git clone https://github.com/fventuri/x6100-buildroot.git
 - build the buildroot Linux system and create the SD card image (it will take a while)
 ```
 export BR2_EXTERNAL="$PWD/x6100-buildroot"
-cd buildroot-2025.05
+cd buildroot-2025.08-rc2
 make X6100_defconfig
 make
 ```
@@ -39,7 +39,7 @@ cd ..
 - remove the old build of x6100-gui and rebuild it:
 ```
 export BR2_EXTERNAL="$PWD/x6100-buildroot"
-cd buildroot-2025.05
+cd buildroot-2025.08-rc2
 rm -fr output/build/x6100-gui-*
 make
 ```

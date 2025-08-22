@@ -1,0 +1,11 @@
+diff -Nuar rhvoice-1.14.0.orig/src/audio/playback_stream_impl.hpp rhvoice-1.14.0/src/audio/playback_stream_impl.hpp
+--- rhvoice-1.14.0.orig/src/audio/playback_stream_impl.hpp	2023-11-16 06:28:51.000000000 -0500
++++ rhvoice-1.14.0/src/audio/playback_stream_impl.hpp	2025-08-20 22:23:38.536983050 -0400
+@@ -16,6 +16,7 @@
+ #ifndef RHVOICE_AUDIO_PLAYBACK_STREAM_IMPL_HPP
+ #define RHVOICE_AUDIO_PLAYBACK_STREAM_IMPL_HPP
+ 
++#include <cstdint>
+ #include "audio.hpp"
+ 
+ namespace RHVoice
