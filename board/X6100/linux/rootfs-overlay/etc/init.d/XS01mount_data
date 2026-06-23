@@ -1,0 +1,31 @@
+#!/bin/sh
+
+set -e
+
+part=/dev/mmcblk2p2
+dir=/etc/NetworkManager/R1CBU
+mountpoint=/mnt
+tmp_mountpoint=/tmp/mmcblk2p2
+
+start() {
+    mkdir $tmp_mountpoint
+    mount $part $tmp_mountpoint
+    mkdir -p $tmp_mountpoint$dir
+    mount --bind $tmp_mountpoint$dir $mountpoint
+    umount $tmp_mountpoint
+    rmdir $tmp_mountpoint
+}
+
+stop() {
+    umount $mountpoint
+}
+
+case "$1" in
+    start)
+        start;;
+    stop)
+        stop;;
+    *)
+        echo "Usage: $0 {start|stop}"
+    exit 1
+esac

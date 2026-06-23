@@ -1,0 +1,33 @@
+diff -Nuar ft8lib.orig/Makefile ft8lib/Makefile
+--- ft8lib.orig/Makefile	2025-05-21 07:52:38.000000000 -0400
++++ ft8lib/Makefile	2025-07-28 21:44:32.815919460 -0400
+@@ -10,7 +10,7 @@
+ FFT_SRC  = $(wildcard fft/*.c)
+ FFT_OBJ  = $(patsubst %.c,$(BUILD_DIR)/%.o,$(FFT_SRC))
+ 
+-TARGETS  = gen_ft8 decode_ft8 decode_ft8_live test_ft8 $(BUILD_DIR)/libft8.so
++TARGETS  = $(BUILD_DIR)/gen_ft8 $(BUILD_DIR)/decode_ft8 $(BUILD_DIR)/decode_ft8_live $(BUILD_DIR)/test_ft8 $(BUILD_DIR)/libft8.so
+ 
+ CFLAGS   = -fsanitize=address -O3 -ggdb3 -fPIC
+ CPPFLAGS = -std=c11 -I.
+@@ -37,16 +37,16 @@
+ 
+ lib: $(OUTPUTLIB)
+ 
+-gen_ft8: $(BUILD_DIR)/demo/gen_ft8.o $(FT8_OBJ) $(COMMON_OBJ) $(FFT_OBJ)
++$(BUILD_DIR)/gen_ft8: $(BUILD_DIR)/demo/gen_ft8.o $(FT8_OBJ) $(COMMON_OBJ) $(FFT_OBJ)
+ 	$(CC) $(LDFLAGS) -o $@ $^
+ 
+-decode_ft8: $(BUILD_DIR)/demo/decode_ft8.o $(FT8_OBJ) $(COMMON_OBJ) $(FFT_OBJ)
++$(BUILD_DIR)/decode_ft8: $(BUILD_DIR)/demo/decode_ft8.o $(FT8_OBJ) $(COMMON_OBJ) $(FFT_OBJ)
+ 	$(CC) $(LDFLAGS) -o $@ $^
+ 
+-decode_ft8_live: $(BUILD_DIR)/demo/decode_ft8_live.o $(FT8_OBJ) $(COMMON_OBJ) $(FFT_OBJ)
++$(BUILD_DIR)/decode_ft8_live: $(BUILD_DIR)/demo/decode_ft8_live.o $(FT8_OBJ) $(COMMON_OBJ) $(FFT_OBJ)
+ 	$(CC) $(LDFLAGS) -o $@ $^
+ 
+-test_ft8: $(BUILD_DIR)/test/test.o $(FT8_OBJ)
++$(BUILD_DIR)/test_ft8: $(BUILD_DIR)/test/test.o $(FT8_OBJ)
+ 	$(CC) $(LDFLAGS) -o $@ $^
+ 
+ $(BUILD_DIR)/%.o: %.c

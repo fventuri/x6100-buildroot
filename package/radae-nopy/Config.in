@@ -1,0 +1,4 @@
+config BR2_PACKAGE_RADAE_NOPY
+	bool "radae_nopy"
+	help
+	  A version of RADAE which doesn't require python 

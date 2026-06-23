@@ -1,0 +1,27 @@
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -32,6 +32,12 @@
+     PUBLIC_HEADER "rade_api.h"
+ )
+
++install(TARGETS lpcnet_demo RUNTIME DESTINATION bin)
++install(TARGETS rade
++    LIBRARY DESTINATION lib
++    PUBLIC_HEADER DESTINATION include
++)
++
+ if(NOT WIN32)
+
+ # Standalone transmitter
+@@ -66,4 +72,11 @@
+ add_executable(rade_callsign_test rade_callsign_test.c)
+ target_link_libraries(rade_callsign_test rade m)
+
++install(TARGETS
++    radae_tx radae_rx real2iq
++    rade_demod_wav rade_modulate_wav
++    rade_bpf_test rade_ber_test rade_callsign_test
++    RUNTIME DESTINATION bin
++)
++
+ endif(NOT WIN32)

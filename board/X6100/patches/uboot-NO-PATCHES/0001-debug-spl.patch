@@ -1,0 +1,43 @@
+diff -Nuar u-boot-2025.07.orig/arch/arm/lib/crt0.S u-boot-2025.07/arch/arm/lib/crt0.S
+--- u-boot-2025.07.orig/arch/arm/lib/crt0.S	2025-07-07 11:48:28.000000000 -0400
++++ u-boot-2025.07/arch/arm/lib/crt0.S	2025-08-26 14:08:16.392017286 -0400
+@@ -176,11 +176,13 @@
+ #endif
+ 
+ # ifdef CONFIG_XPL_BUILD
++	bl	checkpoint_before_relocate
+ 	/* Use a DRAM stack for the rest of SPL, if requested */
+ 	bl	spl_relocate_stack_gd
+ 	cmp	r0, #0
+ 	movne	sp, r0
+ 	movne	r9, r0
++	bl	checkpoint_after_relocate
+ # endif
+ 
+ #if ! defined(CONFIG_XPL_BUILD)
+diff -Nuar u-boot-2025.07.orig/board/sunxi/board.c u-boot-2025.07/board/sunxi/board.c
+--- u-boot-2025.07.orig/board/sunxi/board.c	2025-07-07 11:48:28.000000000 -0400
++++ u-boot-2025.07/board/sunxi/board.c	2025-08-26 14:11:44.459291302 -0400
+@@ -995,3 +995,11 @@
+ 	return ret;
+ }
+ #endif /* CONFIG_SPL_LOAD_FIT */
++
++void checkpoint_before_relocate(void) {
++	printf("checkpoint before relocate\n");
++}
++
++void checkpoint_after_relocate(void) {
++	printf("checkpoint after relocate\n");
++}
+diff -Nuar u-boot-2025.07.orig/common/spl/spl.c u-boot-2025.07/common/spl/spl.c
+--- u-boot-2025.07.orig/common/spl/spl.c	2025-07-07 11:48:28.000000000 -0400
++++ u-boot-2025.07/common/spl/spl.c	2025-08-26 14:13:17.624259806 -0400
+@@ -955,6 +955,7 @@
+ #if !defined(CONFIG_ARM) && !defined(CONFIG_RISCV)
+ 	gd = new_gd;
+ #endif
++	printf("checkpoint about to return from relocate: %08x\n", ptr);
+ 	return ptr;
+ #else
+ 	return 0;

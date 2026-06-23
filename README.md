@@ -7,8 +7,8 @@ External buildroot tree for the Xiegu X6100 transceiver.
 
 - download the latest stable release of buildroot and untar it:
 ```
-curl -O https://buildroot.org/downloads/buildroot-2025.08.tar.xz
-tar xJf buildroot-2025.08.tar.xz
+curl -O https://buildroot.org/downloads/buildroot-2026.05.tar.xz
+tar xJf buildroot-2026.05.tar.xz
 ```
 
 - clone this repository
@@ -19,7 +19,7 @@ git clone https://github.com/fventuri/x6100-buildroot.git
 - build the buildroot Linux system and create the SD card image (it will take a while)
 ```
 export BR2_EXTERNAL="$PWD/x6100-buildroot"
-cd buildroot-2025.08
+cd buildroot-2026.05
 make X6100_defconfig
 make
 ```
@@ -39,7 +39,7 @@ cd ..
 - remove the old build of x6100-gui and rebuild it:
 ```
 export BR2_EXTERNAL="$PWD/x6100-buildroot"
-cd buildroot-2025.08
+cd buildroot-2026.05
 rm -fr output/build/x6100-gui-*
 make
 ```
@@ -50,7 +50,6 @@ make
 - Rui Oliveira CT7ALW
 - Олег Белоусов (Oleg Belusov) R1CBU
 - Георгий Дюльдин (Georgy Dyuldin) R2RFE
-- wicknix
 
 
 ## References
@@ -59,8 +58,6 @@ make
 - [current AetherX6100Buildroot - Georgy](https://github.com/gdyuldin/AetherX6100Buildroot)
 - [current x6100_gui - Georgy](https://github.com/gdyuldin/x6100_gui)
 - [current X6100Control - Georgy](https://github.com/gdyuldin/X6100Control)
-
-- [x6100_gui - wicknix](https://github.com/wicknix/x6100_gui)
 
 - [previous AetherX6100Buildroot - Oleg](https://github.com/strijar/AetherX6100Buildroot)
 - [previous x6100_gui - Oleg](https://github.com/strijar/x6100_gui)

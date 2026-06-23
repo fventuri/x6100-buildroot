@@ -1,0 +1,4 @@
+config BR2_PACKAGE_FREEDV_BACKEND
+	bool "freedv_backend"
+	help
+	  Common backend code shared by FreeDV projects

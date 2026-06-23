@@ -1,6 +1,6 @@
-diff -Nuar aether-x6100-control.orig/include/aether_radio/x6100_control/low/gpio.h aether-x6100-control/include/aether_radio/x6100_control/low/gpio.h
---- aether-x6100-control.orig/include/aether_radio/x6100_control/low/gpio.h	2025-05-10 07:34:37.000000000 -0400
-+++ aether-x6100-control/include/aether_radio/x6100_control/low/gpio.h	2025-05-29 07:10:25.131755587 -0400
+diff -Nuar aether-x6100-control-v0.15.10.orig/include/aether_radio/x6100_control/low/gpio.h aether-x6100-control-v0.15.10/include/aether_radio/x6100_control/low/gpio.h
+--- aether-x6100-control-v0.15.10.orig/include/aether_radio/x6100_control/low/gpio.h	2026-03-07 05:56:39.000000000 -0500
++++ aether-x6100-control-v0.15.10/include/aether_radio/x6100_control/low/gpio.h	2026-05-23 16:41:34.559844494 -0400
 @@ -14,11 +14,5 @@
  #include <stdbool.h>
  #include <stdint.h>
@@ -14,10 +14,41 @@ diff -Nuar aether-x6100-control.orig/include/aether_radio/x6100_control/low/gpio
  AETHER_X6100CTRL_API bool x6100_gpio_init();
 -AETHER_X6100CTRL_API void x6100_gpio_set(int pin, int value);
 +AETHER_X6100CTRL_API void x6100_gpio_set(const char *name, int value);
-diff -Nuar aether-x6100-control.orig/src/low/gpio.c aether-x6100-control/src/low/gpio.c
---- aether-x6100-control.orig/src/low/gpio.c	2025-05-10 07:34:37.000000000 -0400
-+++ aether-x6100-control/src/low/gpio.c	2025-05-29 07:10:25.132349858 -0400
-@@ -17,45 +17,85 @@
+diff -Nuar aether-x6100-control-v0.15.10.orig/src/low/fw_upgrade.c aether-x6100-control-v0.15.10/src/low/fw_upgrade.c
+--- aether-x6100-control-v0.15.10.orig/src/low/fw_upgrade.c	2026-03-07 05:56:39.000000000 -0500
++++ aether-x6100-control-v0.15.10/src/low/fw_upgrade.c	2026-05-23 16:59:14.276438562 -0400
+@@ -104,15 +104,15 @@
+     uart_flush();
+ 
+     printf("Send reset\n");
+-    x6100_gpio_set(x6100_pin_morse_key, 0);
+-    x6100_gpio_set(x6100_pin_bb_reset, 1);
++    x6100_gpio_set("morse_key", 0);
++    x6100_gpio_set("bb_reset", 1);
+     usleep(100000);
+ 
+     printf("Flush UART buffers\n");
+     uart_flush();
+ 
+     printf("Release bb reset\n");
+-    x6100_gpio_set(x6100_pin_bb_reset, 0);
++    x6100_gpio_set("bb_reset", 0);
+     usleep(1000000);
+ 
+     bool iap_result = false;
+@@ -134,7 +134,7 @@
+     }
+ 
+     printf("Release morse key\n");
+-    x6100_gpio_set(x6100_pin_morse_key, 1);
++    x6100_gpio_set("morse_key", 1);
+ 
+     if (!iap_result) {
+         msg.code = X6100_FW_UPGRADE_RESET_ERROR;
+diff -Nuar aether-x6100-control-v0.15.10.orig/src/low/gpio.c aether-x6100-control-v0.15.10/src/low/gpio.c
+--- aether-x6100-control-v0.15.10.orig/src/low/gpio.c	2026-03-07 05:56:39.000000000 -0500
++++ aether-x6100-control-v0.15.10/src/low/gpio.c	2026-05-23 16:46:26.636464932 -0400
+@@ -17,45 +17,86 @@
  #include <gpiod.h>
  
  #define EXIT_ON_FALSE(val, msg) ({if (!val) {fprintf(stderr, "%s\n", msg); return false;}})
@@ -36,7 +67,7 @@ diff -Nuar aether-x6100-control.orig/src/low/gpio.c aether-x6100-control/src/low
 -static struct gpiod_line *line_light;
 -static struct gpiod_line *line_wifi;
 -
--
+ 
 -int x6100_pin_wifi = X6100_PIN_WIFI;
 -int x6100_pin_usb = X6100_PIN_USB;
 -int x6100_pin_light = X6100_PIN_LIGHT;
@@ -84,14 +115,14 @@ diff -Nuar aether-x6100-control.orig/src/low/gpio.c aether-x6100-control/src/low
 +
 +    *offset = gpiod_chip_get_line_offset_from_name(chip, name);
 +    if (*offset == -1) {
-         return false;
-     }
--    if (gpiod_line_request_output(*line, consumer, val) != 0) {
++        return false;
++    }
 +
 +    settings = gpiod_line_settings_new();
 +    if (!settings) {
          return false;
      }
+-    if (gpiod_line_request_output(*line, consumer, val) != 0) {
 +
 +    gpiod_line_settings_set_direction(settings, GPIOD_LINE_DIRECTION_OUTPUT);
 +    gpiod_line_settings_set_output_value(settings, val);
@@ -105,8 +136,8 @@ diff -Nuar aether-x6100-control.orig/src/low/gpio.c aether-x6100-control/src/low
 +    if (gpiod_line_config_add_line_settings(line_cfg, offset, 1, settings)) {
 +        gpiod_line_config_free(line_cfg);
 +        gpiod_line_settings_free(settings);
-+        return false;
-+    }
+         return false;
+     }
 +
 +    if (consumer) {
 +        req_cfg = gpiod_request_config_new();
@@ -126,7 +157,7 @@ diff -Nuar aether-x6100-control.orig/src/low/gpio.c aether-x6100-control/src/low
      return true;
  }
  
-@@ -64,36 +104,27 @@
+@@ -64,36 +105,27 @@
      EXIT_ON_FALSE(gpio_chip_open("gpiochip0", &chip0), "Can't open gpio chip 0");
      EXIT_ON_FALSE(gpio_chip_open("gpiochip1", &chip1), "Can't open gpio chip 1");
  

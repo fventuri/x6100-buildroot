@@ -1,0 +1,11 @@
+--- a/lv_drivers/display/fbdev.c
++++ b/lv_drivers/display/fbdev.c
+@@ -344,7 +344,7 @@
+         struct draw_task *t = &queue.tasks[queue.tail];
+         queue.tail = (queue.tail + 1) % QUEUE_SIZE;
+ 
+-        rotate_sw(t->color_p, t->area.x2 - t->area.x1 + 1, t->area.y2 - t->area.y1 + 1, color_p);
++        rotate_sw((uint32_t *)(t->color_p), t->area.x2 - t->area.x1 + 1, t->area.y2 - t->area.y1 + 1, (uint32_t *)(color_p));
+ 
+         area.x1 = t->area.y1;
+         area.x2 = t->area.y2;

@@ -1,0 +1,12 @@
+diff -Nuar aether-x6100-control-v0.15.10.orig/src/low/uart.c aether-x6100-control-v0.15.10/src/low/uart.c
+--- aether-x6100-control-v0.15.10.orig/src/low/uart.c	2026-03-07 05:56:39.000000000 -0500
++++ aether-x6100-control-v0.15.10/src/low/uart.c	2026-05-23 16:51:11.354561772 -0400
+@@ -48,7 +48,7 @@
+ 
+     if (tcsetattr(uart_fd, 0, &attr) < 0)
+     {
+-        x6100_uart_close_fd(uart_fd);
++        x6100_uart_close_fd();
+         return false;
+     }
+     return true;

@@ -1,0 +1,68 @@
+diff -Nuar ft8lib.orig/common/monitor.c ft8lib/common/monitor.c
+--- ft8lib.orig/common/monitor.c	2025-05-21 07:52:38.000000000 -0400
++++ ft8lib/common/monitor.c	2025-07-27 22:30:53.206482945 -0400
+@@ -6,6 +6,14 @@
+ 
+ #include <stdlib.h>
+ 
++// fv
++static int fft_size;
++static int fft_wsize;
++static int fft_calls;
++static int ifft_size;
++static int ifft_wsize;
++static int ifft_calls;
++
+ static float hann_i(int i, int N)
+ {
+     float x = sinf((float)M_PI * i / N);
+@@ -81,6 +89,10 @@
+     kiss_fftr_alloc(me->nfft, 0, 0, &fft_work_size);
+     me->fft_work = malloc(fft_work_size);
+     me->fft_cfg = kiss_fftr_alloc(me->nfft, 0, me->fft_work, &fft_work_size);
++// fv
++fft_size = me->nfft;
++fft_wsize = fft_work_size;
++fft_calls = 0;
+ 
+     LOG(LOG_INFO, "N_FFT = %d\n", me->nfft);
+     LOG(LOG_DEBUG, "FFT work area = %zu\n", fft_work_size);
+@@ -92,6 +104,10 @@
+     kiss_fft_alloc(me->nifft, 1, 0, &ifft_work_size);
+     me->ifft_work = malloc(ifft_work_size);
+     me->ifft_cfg = kiss_fft_alloc(me->nifft, 1, me->ifft_work, &ifft_work_size);
++// fv
++ifft_size = me->nifft;
++ifft_wsize = ifft_work_size;
++ifft_calls = 0;
+ 
+     LOG(LOG_INFO, "N_iFFT = %d\n", me->nifft);
+     LOG(LOG_DEBUG, "iFFT work area = %zu\n", ifft_work_size);
+@@ -114,6 +130,9 @@
+ 
+ void monitor_free(monitor_t* me)
+ {
++// fv
++fprintf(stderr, "forward FFT - NFFT=%d work_size=%ld calls=%d\n", fft_size, fft_wsize, fft_calls);
++fprintf(stderr, "inverse FFT - NFFT=%d work_size=%ld calls=%d\n", ifft_size, ifft_wsize, ifft_calls);
+     waterfall_free(&me->wf);
+     free(me->fft_work);
+     free(me->last_frame);
+@@ -158,6 +177,8 @@
+         {
+             timedata[pos] = me->window[pos] * me->last_frame[pos];
+         }
++// fv
++fft_calls++;
+         kiss_fftr(me->fft_cfg, timedata, freqdata);
+ 
+         // Loop over possible frequency OSR offsets
+@@ -249,6 +270,8 @@
+ 
+         // Compute inverse DFT and overlap-add the waveform
+         kiss_fft_cpx timedata[num_ifft];
++// fv
++ifft_calls++;
+         kiss_fft(me->ifft_cfg, freqdata, timedata);
+         for (int i = 0; i < num_ifft; ++i)
+         {
