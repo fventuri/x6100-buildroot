@@ -3,6 +3,15 @@
 External buildroot tree for the Xiegu X6100 transceiver.
 
 
+## Current release: 20260625
+
+### What's new in 20260625
+
+- **rade_demod_wav**: OFDM demodulation (`rade_rx`) and vocoder synthesis
+  (`fargan_synthesize`) now run concurrently on separate cores via a
+  producer-consumer pipeline, reducing decode time for a 49 s file from
+  ~61 s to ~39 s (~1.6× speedup, faster than real-time).
+
 ## How to build
 
 - download the latest stable release of buildroot and untar it:

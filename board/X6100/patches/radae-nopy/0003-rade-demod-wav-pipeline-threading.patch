@@ -1,0 +1,280 @@
+--- a/src/rade_demod_wav.c
++++ b/src/rade_demod_wav.c
+@@ -43,6 +43,7 @@
+ #include <stdint.h>
+ #include <math.h>
+ #include <getopt.h>
++#include <pthread.h>
+ 
+ #include "rade_api.h"
+ #include "rade_dsp.h"
+@@ -53,6 +54,146 @@
+ #define M_PI 3.14159265358979323846
+ #endif
+ 
++/* ---- Feature batch queue (producer-consumer pipeline) ---- */
++
++#define FQUEUE_DEPTH 4
++
++typedef struct {
++    float  *features;  /* pre-allocated, n_features_out floats */
++    int     n_out;     /* 0 = end-of-stream sentinel */
++    int     mf;        /* modem frame index */
++} FBatch;
++
++typedef struct {
++    FBatch          slots[FQUEUE_DEPTH];
++    int             head, tail, count;
++    pthread_mutex_t lock;
++    pthread_cond_t  not_full, not_empty;
++} FQueue;
++
++static void fqueue_init(FQueue *q, int n_features_out) {
++    q->head = q->tail = q->count = 0;
++    pthread_mutex_init(&q->lock, NULL);
++    pthread_cond_init(&q->not_full, NULL);
++    pthread_cond_init(&q->not_empty, NULL);
++    for (int i = 0; i < FQUEUE_DEPTH; i++)
++        q->slots[i].features = malloc((size_t)n_features_out * sizeof(float));
++}
++
++static void fqueue_push(FQueue *q, const float *features, int n_out, int mf) {
++    pthread_mutex_lock(&q->lock);
++    while (q->count == FQUEUE_DEPTH)
++        pthread_cond_wait(&q->not_full, &q->lock);
++    FBatch *s = &q->slots[q->head];
++    s->n_out  = n_out;
++    s->mf     = mf;
++    if (n_out > 0)
++        memcpy(s->features, features, (size_t)n_out * sizeof(float));
++    q->head = (q->head + 1) % FQUEUE_DEPTH;
++    q->count++;
++    pthread_cond_signal(&q->not_empty);
++    pthread_mutex_unlock(&q->lock);
++}
++
++static void fqueue_pop(FQueue *q, float *features, int *n_out, int *mf) {
++    pthread_mutex_lock(&q->lock);
++    while (q->count == 0)
++        pthread_cond_wait(&q->not_empty, &q->lock);
++    FBatch *s = &q->slots[q->tail];
++    *n_out = s->n_out;
++    *mf    = s->mf;
++    if (s->n_out > 0)
++        memcpy(features, s->features, (size_t)s->n_out * sizeof(float));
++    q->tail = (q->tail + 1) % FQUEUE_DEPTH;
++    q->count--;
++    pthread_cond_signal(&q->not_full);
++    pthread_mutex_unlock(&q->lock);
++}
++
++static void fqueue_destroy(FQueue *q) {
++    for (int i = 0; i < FQUEUE_DEPTH; i++)
++        free(q->slots[i].features);
++    pthread_mutex_destroy(&q->lock);
++    pthread_cond_destroy(&q->not_full);
++    pthread_cond_destroy(&q->not_empty);
++}
++
++/* ---- Synthesis (consumer) thread ---- */
++
++typedef struct {
++    FQueue     *queue;
++    int         n_features_out;
++    int         verbose;
++    FILE       *fout;
++    uint32_t    total_bytes;  /* written by thread, read by main after join */
++} SynthArg;
++
++static void *synth_thread(void *arg) {
++    SynthArg *a = arg;
++
++    FARGANState fargan;
++    fargan_init(&fargan);
++
++    int   fargan_ready = 0;
++    float cont_buf[5 * NB_TOTAL_FEATURES];
++    int   cont_frames  = 0;
++
++    float *feat_buf = malloc((size_t)a->n_features_out * sizeof(float));
++
++    for (;;) {
++        int n_out, mf;
++        fqueue_pop(a->queue, feat_buf, &n_out, &mf);
++        if (n_out == 0) break;  /* end-of-stream sentinel */
++
++        int n_frames = n_out / RADE_NB_TOTAL_FEATURES;
++        for (int fi = 0; fi < n_frames; fi++) {
++            float *feat = &feat_buf[fi * RADE_NB_TOTAL_FEATURES];
++
++            /* ---- fargan_cont warm-up: buffer the first 5 frames ---- */
++            if (!fargan_ready) {
++                memcpy(&cont_buf[cont_frames * RADE_NB_TOTAL_FEATURES],
++                       feat, (size_t)RADE_NB_TOTAL_FEATURES * sizeof(float));
++                if (++cont_frames >= 5) {
++                    /* fargan_cont expects features packed at stride
++                       NB_FEATURES – copy only the first NB_FEATURES of
++                       each buffered frame, matching lpcnet_demo behaviour. */
++                    float packed[5 * NB_FEATURES];
++                    for (int i = 0; i < 5; i++)
++                        memcpy(&packed[i * NB_FEATURES],
++                               &cont_buf[i * NB_TOTAL_FEATURES],
++                               (size_t)NB_FEATURES * sizeof(float));
++
++                    float zeros[FARGAN_CONT_SAMPLES];
++                    memset(zeros, 0, sizeof(zeros));
++                    fargan_cont(&fargan, zeros, packed);
++                    fargan_ready = 1;
++                }
++                continue;  /* warm-up frames are not synthesised */
++            }
++
++            /* ---- synthesise one 10-ms speech frame ---- */
++            float   fpcm[LPCNET_FRAME_SIZE];
++            int16_t pcm[LPCNET_FRAME_SIZE];
++
++            fargan_synthesize(&fargan, fpcm, feat);
++
++            /* float → int16, matching lpcnet_demo rounding */
++            for (int s = 0; s < LPCNET_FRAME_SIZE; s++) {
++                float v = fpcm[s] * 32768.0f;
++                if (v >  32767.0f)  v =  32767.0f;
++                if (v < -32767.0f)  v = -32767.0f;
++                pcm[s] = (int16_t)floor(0.5 + (double)v);
++            }
++
++            fwrite(pcm, sizeof(int16_t), (size_t)LPCNET_FRAME_SIZE, a->fout);
++            a->total_bytes += (uint32_t)(LPCNET_FRAME_SIZE * (int)sizeof(int16_t));
++        }
++    }
++
++    free(feat_buf);
++    return NULL;
++}
++
+ /* ---- Hilbert transform  (coefficients match real2iq.c exactly) ---- */
+ 
+ #define HILBERT_NTAPS   127
+@@ -357,27 +498,32 @@
+         return 1;
+     }
+ 
+-    /* ------------------------------------------------- open FARGAN vocoder */
+-    FARGANState fargan;
+-    fargan_init(&fargan);
+-
+-    /* Buffer for the 5-frame warm-up required by fargan_cont().
+-       Layout: 5 consecutive NB_TOTAL_FEATURES-float frames. */
+-    int   fargan_ready  = 0;
+-    float cont_buf[5 * NB_TOTAL_FEATURES];
+-    int   cont_frames   = 0;
++    /* ---------------------------------------- init queue and synth thread */
++    FQueue   queue;
++    fqueue_init(&queue, n_features_out);
+ 
+     /* ---------------------------------------------------- open output WAV */
+     FILE *fout = fopen(output_file, "wb");
+     if (!fout) {
+         fprintf(stderr, "rade_demod: can't open '%s' for writing\n", output_file);
+         free(iq); free(rx_buf); free(feat_buf); free(eoo_buf);
++        fqueue_destroy(&queue);
+         rade_close(r); rade_finalize();
+         return 1;
+     }
+     /* Placeholder header – data_size patched at the end. */
+     wav_write_header(fout, RADE_FS_SPEECH, 0);
+-    uint32_t total_bytes = 0;
++
++    SynthArg   sarg = { &queue, n_features_out, verbose, fout, 0 };
++    pthread_t  synth_tid;
++    if (pthread_create(&synth_tid, NULL, synth_thread, &sarg) != 0) {
++        fprintf(stderr, "rade_demod: pthread_create failed\n");
++        fclose(fout);
++        free(iq); free(rx_buf); free(feat_buf); free(eoo_buf);
++        fqueue_destroy(&queue);
++        rade_close(r); rade_finalize();
++        return 1;
++    }
+ 
+     /* ---------------------------------------------------- demodulation loop */
+     long iq_pos    = 0;
+@@ -407,54 +553,16 @@
+ 
+         if (n_out > 0) {
+             vld_count++;
+-            int n_frames = n_out / RADE_NB_TOTAL_FEATURES;
+-
+-            for (int fi = 0; fi < n_frames; fi++) {
+-                float *feat = &feat_buf[fi * RADE_NB_TOTAL_FEATURES];
+-
+-                /* ---- fargan_cont warm-up: buffer the first 5 frames ---- */
+-                if (!fargan_ready) {
+-                    memcpy(&cont_buf[cont_frames * RADE_NB_TOTAL_FEATURES],
+-                           feat, (size_t)RADE_NB_TOTAL_FEATURES * sizeof(float));
+-                    if (++cont_frames >= 5) {
+-                        /* fargan_cont expects features packed at stride
+-                           NB_FEATURES – copy only the first NB_FEATURES of
+-                           each buffered frame, matching lpcnet_demo behaviour. */
+-                        float packed[5 * NB_FEATURES];
+-                        for (int i = 0; i < 5; i++)
+-                            memcpy(&packed[i * NB_FEATURES],
+-                                   &cont_buf[i * NB_TOTAL_FEATURES],
+-                                   (size_t)NB_FEATURES * sizeof(float));
+-
+-                        float zeros[FARGAN_CONT_SAMPLES];
+-                        memset(zeros, 0, sizeof(zeros));
+-                        fargan_cont(&fargan, zeros, packed);
+-                        fargan_ready = 1;
+-                    }
+-                    continue;   /* warm-up frames are not synthesised */
+-                }
+-
+-                /* ---- synthesise one 10-ms speech frame ---- */
+-                float   fpcm[LPCNET_FRAME_SIZE];
+-                int16_t pcm[LPCNET_FRAME_SIZE];
+-
+-                fargan_synthesize(&fargan, fpcm, feat);
+-
+-                /* float → int16, matching lpcnet_demo rounding */
+-                for (int s = 0; s < LPCNET_FRAME_SIZE; s++) {
+-                    float v = fpcm[s] * 32768.0f;
+-                    if (v >  32767.0f)  v =  32767.0f;
+-                    if (v < -32767.0f)  v = -32767.0f;
+-                    pcm[s] = (int16_t)floor(0.5 + (double)v);
+-                }
+-
+-                fwrite(pcm, sizeof(int16_t), (size_t)LPCNET_FRAME_SIZE, fout);
+-                total_bytes += (uint32_t)(LPCNET_FRAME_SIZE * (int)sizeof(int16_t));
+-            }
++            fqueue_push(&queue, feat_buf, n_out, mf_count);
+         }
+         mf_count++;
+     }
+ 
++    /* Signal end of stream and wait for synthesis to drain */
++    fqueue_push(&queue, NULL, 0, mf_count);
++    pthread_join(synth_tid, NULL);
++    uint32_t total_bytes = sarg.total_bytes;
++
+     /* -------------------------------------------------------- finalise WAV */
+     fseek(fout, 0, SEEK_SET);
+     wav_write_header(fout, RADE_FS_SPEECH, total_bytes);
+@@ -468,6 +576,7 @@
+     }
+ 
+     /* -----------------------------------------------------------  cleanup */
++    fqueue_destroy(&queue);
+     free(iq);
+     free(rx_buf);
+     free(feat_buf);
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -54,7 +54,7 @@
+ 
+ # WAV demodulator: WAV in → demod → WAV out
+ add_executable(rade_demod_wav rade_demod_wav.c)
+-target_link_libraries(rade_demod_wav rade opus m)
++target_link_libraries(rade_demod_wav rade opus m pthread)
+ 
+ # WAV modulator: WAV in → features → RADE encode → OFDM mod → WAV out
+ add_executable(rade_modulate_wav rade_modulate_wav.c)
